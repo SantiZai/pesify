@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   isSignInWithEmailLink,
   sendSignInLinkToEmail,
@@ -213,6 +214,18 @@ export default function LoginPage() {
             </svg>
             {googleLoading ? "Conectando..." : "Google"}
           </Button>
+
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Al ingresar aceptás los{" "}
+            <Link href="/terms" className="font-medium text-primary hover:underline">
+              Términos
+            </Link>{" "}
+            y la{" "}
+            <Link href="/privacy" className="font-medium text-primary hover:underline">
+              Política de Privacidad
+            </Link>
+            .
+          </p>
         </CardContent>
       </Card>
     </main>

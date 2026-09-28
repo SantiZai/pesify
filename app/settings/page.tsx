@@ -13,7 +13,7 @@ import {
   type CustomCategory,
 } from "@/lib/firebase/categories";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/firebase/transactions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,8 @@ import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
 import { Avatar } from "@/components/avatar";
 import { seedDemoData } from "@/lib/firebase/seed";
+import { APP_VERSION } from "@/lib/version";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -340,6 +342,37 @@ export default function SettingsPage() {
                 </Button>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Legales */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Legales y tus datos</CardTitle>
+            <CardDescription>Condiciones, privacidad y cómo borrar tu información</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <Link href="/privacy" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                Política de Privacidad
+              </Link>
+              <Link href="/terms" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                Términos y Condiciones
+              </Link>
+            </div>
+            <p className="text-muted-foreground">
+              Podés borrar tu contenido desde la app (movimientos, presupuestos, cuentas,
+              recurrencias, viajes y familias). Para la eliminación completa de tu cuenta
+              escribinos a{" "}
+              <a
+                className="font-medium text-primary hover:underline"
+                href="mailto:santiagozaidandev@gmail.com?subject=Eliminar%20mis%20datos%20de%20Pesify"
+              >
+                santiagozaidandev@gmail.com
+              </a>{" "}
+              desde el email de tu cuenta.
+            </p>
+            <p className="text-xs text-muted-foreground">Pesify v{APP_VERSION}</p>
           </CardContent>
         </Card>
 
