@@ -82,6 +82,9 @@ export function useFx() {
       /** Corto para ejes ($1,2 M con el símbolo de la moneda). */
       fmtC: (amountArs: number) =>
         `${formatters.full.formatToParts(0).find((p) => p.type === "currency")?.value ?? "$"}${formatters.compact.format(amountArs / rateToArs)}`,
+      /** Eje de gráficos: compacto SIN símbolo (la moneda va en el título).
+       *  Así "1,2 M" entra siempre, sin importar el símbolo de cada entorno. */
+      fmtAxis: (amountArs: number) => formatters.compact.format(amountArs / rateToArs),
       /** Achica el texto si no entra. */
       size: (text: string, base: "2xl" | "4xl" = "2xl") => sizeFor(text, base),
     }),

@@ -178,6 +178,9 @@ export default function LandingPage() {
               Aprender a usarla
             </a>
           </div>
+          <Link href="/demo" className="mt-4 text-sm font-medium text-primary hover:underline">
+            o probá la demo sin crear cuenta →
+          </Link>
         </section>
 
         {/* Features */}

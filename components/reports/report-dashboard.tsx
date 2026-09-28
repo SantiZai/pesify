@@ -50,7 +50,7 @@ function inRange(t: Transaction, from: Date, to: Date): boolean {
 type Bucket = { key: string; label: string; ingresos: number; egresos: number };
 
 /** Neto acumulado del rango: parte de cero el primer día. Un punto por día. */
-function buildCumulative(
+export function buildCumulative(
   transactions: Transaction[],
   from: Date,
   to: Date
@@ -77,7 +77,7 @@ function buildCumulative(
   return [...byDay.values()];
 }
 
-function bucketize(items: Transaction[], from: Date, to: Date): Bucket[] {
+export function bucketize(items: Transaction[], from: Date, to: Date): Bucket[] {
   const days = differenceInCalendarDays(to, from) + 1;
   const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -155,7 +155,7 @@ export function ReportDashboard({ familyId, uid, displayName }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { transactions, loading } = useTransactions(familyId);
-  const { fmt, fmtC, size } = useFx();
+  const { fmt, fmtC, size, currency } = useFx();
 
   const filtered = useMemo(
     () => transactions.filter((t) => inRange(t, range.from, range.to)),
@@ -489,7 +489,7 @@ export function ReportDashboard({ familyId, uid, displayName }: Props) {
             <Card>
               <CardHeader>
                 <CardTitle>Evolución del saldo</CardTitle>
-                <CardDescription>Neto acumulado del período</CardDescription>
+                <CardDescription>Neto acumulado del período · en {currency}</CardDescription>
               </CardHeader>
               <CardContent>
                 <ShadcnTrend data={cumulative} />

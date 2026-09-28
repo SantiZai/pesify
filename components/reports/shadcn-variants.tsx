@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   ChartContainer,
   ChartLegend,
@@ -117,7 +119,14 @@ export function ShadcnDonut({
 
 /** Área con degradado y línea marcada (estilo shadcn "Area Chart - Gradient"). */
 export function ShadcnTrend({ data }: { data: Point[] }) {
-  const { fmt, fmtC } = useFx();
+  const { fmt, fmtAxis } = useFx();
+  // Eje Y corto y con ancho medido: etiquetas sin símbolo ("1,2 M", la moneda
+  // va en el título y completa en el tooltip) y ancho según el valor más
+  // largo para que nada se corte.
+  const yWidth = useMemo(() => {
+    const peak = Math.max(0, ...data.map((d) => Math.abs(d.saldo)));
+    return Math.min(96, Math.max(44, fmtAxis(peak).length * 7 + 14));
+  }, [data, fmtAxis]);
   return (
     <ChartContainer
       config={{ saldo: { label: "Saldo acumulado", color: "#16a34a" } } satisfies ChartConfig}
@@ -135,9 +144,10 @@ export function ShadcnTrend({ data }: { data: Point[] }) {
         <YAxis
           tickLine={false}
           axisLine={false}
-          width={56}
+          width={yWidth}
+          tickCount={5}
           tick={{ fontSize: 11 }}
-          tickFormatter={(v: number) => fmtC(v)}
+          tickFormatter={(v: number) => fmtAxis(v)}
         />
         <ChartTooltip
           content={<ChartTooltipContent formatter={(value) => fmt(Number(value))} />}
