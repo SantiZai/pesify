@@ -111,10 +111,8 @@ service cloud.firestore {
     // Viajes: el código de invitación es el id. Pueden participar invitados
     // que no son de la familia (cualquiera con el código puede unirse).
     match /trips/{tripId} {
-      // Un código inválido (doc inexistente) debe dar "no existe", no permiso.
-      allow get: if resource == null || signedIn()
-        && (request.auth.uid in resource.data.participants
-          || request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.members);
+      // El id ES el código: cualquiera logueado puede leer un viaje si lo conoce.
+      allow get: if signedIn();
       allow list: if signedIn()
         && (request.auth.uid in resource.data.participants
           || request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.members);

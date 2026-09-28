@@ -29,7 +29,7 @@ export default function TripsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const familyId = profile?.currentFamilyId ?? null;
-  const { trips, loading } = useTrips(familyId);
+  const { trips, loading } = useTrips(familyId, user?.uid ?? null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

@@ -151,9 +151,11 @@ function parseTrip(id: string, data: Record<string, unknown>): Trip | null {
   };
 }
 
-export function useTrips(familyId: string | null | undefined) {
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useTrips(familyId: string | null | undefined, uid: string | null | undefined = null) {
+  const [byFamily, setByFamily] = useState<Trip[]>([]);
+  const [invited, setInvited] = useState<Trip[]>([]);
+  const [loadingFamily, setLoadingFamily] = useState(true);
+  const [loadingInvited, setLoadingInvited] = useState(true);
 
   useEffect(() => {
     if (!familyId) return;
@@ -166,20 +168,47 @@ export function useTrips(familyId: string | null | undefined) {
           const parsed = parseTrip(d.id, d.data() as Record<string, unknown>);
           if (parsed) items.push(parsed);
         });
-        items.sort((a, b) => b.id.localeCompare(a.id));
-        setTrips(items);
-        setLoading(false);
+        setByFamily(items);
+        setLoadingFamily(false);
       },
       (e) => {
         console.error("Error escuchando viajes:", e);
-        setLoading(false);
+        setLoadingFamily(false);
       }
     );
     return () => unsubscribe();
   }, [familyId]);
 
+  useEffect(() => {
+    if (!uid) return;
+    // Viajes donde participo aunque no sean de mi familia activa.
+    const q = query(collection(db, "trips"), where("participants", "array-contains", uid));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const items: Trip[] = [];
+        snap.forEach((d) => {
+          const parsed = parseTrip(d.id, d.data() as Record<string, unknown>);
+          if (parsed) items.push(parsed);
+        });
+        setInvited(items);
+        setLoadingInvited(false);
+      },
+      (e) => {
+        console.error("Error escuchando invitaciones:", e);
+        setLoadingInvited(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [uid]);
+
   if (!familyId) return { trips: [], loading: false };
-  return { trips, loading };
+  const seen = new Map<string, Trip>();
+  for (const t of [...byFamily, ...invited]) {
+    if (!seen.has(t.id)) seen.set(t.id, t);
+  }
+  const trips = [...seen.values()].sort((a, b) => b.id.localeCompare(a.id));
+  return { trips, loading: loadingFamily || (uid ? loadingInvited : false) };
 }
 
 export function useTrip(tripId: string | null | undefined) {
