@@ -2,6 +2,7 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { auth } from "@/lib/firebase/config";
 import { signOut } from "firebase/auth";
@@ -43,6 +44,7 @@ function memberName(members: TripMember[], uid: string): string {
 
 export default function TripDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const { user, profile } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -53,9 +55,11 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   const [nameDraft, setNameDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Al borrar se dan de baja las suscripciones antes de la cascada.
+  const [leaving, setLeaving] = useState(false);
 
-  const { trip, members, loading, error } = useTrip(id);
-  const { expenses, loading: loadingExpenses } = useTripExpenses(id);
+  const { trip, members, loading, error } = useTrip(id, !leaving);
+  const { expenses, loading: loadingExpenses } = useTripExpenses(id, !leaving);
   const { fmt } = useFx();
 
   const familyId = profile?.currentFamilyId ?? null;
@@ -100,8 +104,10 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
       return;
     }
     setDeleting(true);
+    setLeaving(true);
     try {
       await deleteTripCascade(id);
+      router.replace("/trips");
     } finally {
       setDeleting(false);
       setConfirmingDelete(false);
@@ -227,6 +233,11 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                     <ul className="divide-y">
                       {expenses.map((e) => {
                         const splitCount = Object.keys(e.shares).length;
+                        const payers = Object.keys(e.paid ?? {});
+                        const payerNames = payers.length > 1
+                          ? `${memberName(members, payers[0])} +${payers.length - 1}`
+                          : e.paidByName;
+                        const coveredEntries = Object.entries(e.coveredBy ?? {});
                         return (
                           <li key={e.id} className="flex items-center gap-3 py-3">
                             <Avatar name={e.paidByName} photoURL={e.paidByPhoto} className="size-9" />
@@ -235,8 +246,15 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                                 {e.description || "Gasto"}
                               </p>
                               <p className="truncate text-xs text-muted-foreground">
-                                Pagó {e.paidByName} · entre {splitCount} · {formatShortDate(e.date.toDate())}
+                                {payers.length > 1 ? `Pagaron ${payerNames}` : `Pagó ${payerNames}`} · entre {splitCount} · {formatShortDate(e.date.toDate())}
                               </p>
+                              {coveredEntries.length > 0 && (
+                                <p className="truncate text-xs text-primary">
+                                  Por {coveredEntries.map(([y, cs]) =>
+                                    `${memberName(members, y)} (${cs.map((c) => memberName(members, c)).join(", ")})`
+                                  ).join(" · ")}
+                                </p>
+                              )}
                             </div>
                             <p className="shrink-0 text-sm font-bold tabular-nums">{fmt(e.amount)}</p>
                             <Button

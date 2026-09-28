@@ -40,27 +40,33 @@ export type TripMember = {
   photoURL: string;
 };
 
-/** Gasto de viaje: quién puso la plata + cuánto debe cada uno (suma = monto).
- *  Así se contempla todo: uno paga todo, pagan por separado, alguien no paga
- *  (otro paga su parte) o paga solo algo (montos personalizados). */
+/** Gasto de viaje: quiénes pusieron plata + cuánto debe cada uno (sumas = monto).
+ *  Así se contempla todo: uno paga todo, varios pagan (por separado o por
+ *  otro), alguien no paga (otro cubre su parte) o paga solo algo. */
 export type TripExpense = {
   id: string;
   tripId: string;
   familyId: string;
+  /** Mayor aportante (display y compatibilidad). */
   paidBy: string;
   paidByName: string;
   paidByPhoto: string;
+  /** Cuánto puso cada UID. */
+  paid: Record<string, number>;
   amount: number;
   description: string;
   category: string;
   date: Timestamp;
   shares: Record<string, number>;
+  /** Por quién pagan otros: uid -> uids que cubren su parte (se suma a su cuenta). */
+  coveredBy: Record<string, string[]>;
 };
 
 export type NewTripExpense = {
   tripId: string;
   familyId: string;
-  paidBy: string;
+  /** Cuánto puso cada UID (debe sumar el monto). */
+  paid: Record<string, number>;
   paidByName: string;
   paidByPhoto?: string;
   amount: number;
@@ -68,6 +74,7 @@ export type NewTripExpense = {
   category?: string;
   date?: Timestamp | Date;
   shares: Record<string, number>;
+  coveredBy?: Record<string, string[]>;
 };
 
 // ── Viajes: CRUD ─────────────────────────────────────────────────────────────
@@ -211,14 +218,14 @@ export function useTrips(familyId: string | null | undefined, uid: string | null
   return { trips, loading: loadingFamily || (uid ? loadingInvited : false) };
 }
 
-export function useTrip(tripId: string | null | undefined) {
+export function useTrip(tripId: string | null | undefined, enabled = true) {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [members, setMembers] = useState<TripMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || !enabled) return;
     const unsubscribe = onSnapshot(
       doc(db, "trips", tripId),
       (snap) => {
@@ -261,9 +268,9 @@ export function useTrip(tripId: string | null | undefined) {
       }
     );
     return () => unsubscribe();
-  }, [tripId]);
+  }, [tripId, enabled]);
 
-  if (!tripId) return { trip: null, members: [], loading: false, error: null };
+  if (!tripId || !enabled) return { trip: null, members: [], loading: false, error: null };
   return { trip, members, loading, error };
 }
 
@@ -277,8 +284,16 @@ function toTimestamp(value: Timestamp | Date | undefined): Timestamp {
 
 export async function addTripExpense(input: NewTripExpense): Promise<string> {
   if (!input.tripId || !input.familyId) throw new Error("Falta el viaje.");
-  if (!input.paidBy) throw new Error("Elegí quién pagó.");
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("El monto debe ser mayor a 0.");
+
+  const paidEntries = Object.entries(input.paid).filter(([, v]) => Number.isFinite(v) && v > 0);
+  if (paidEntries.length === 0) throw new Error("Elegí quién pagó.");
+  const paidSum = paidEntries.reduce((acc, [, v]) => acc + v, 0);
+  if (Math.abs(paidSum - input.amount) > 0.01) {
+    throw new Error(`Lo pagado suma ${paidSum.toFixed(2)} y el gasto es ${input.amount.toFixed(2)}.`);
+  }
+  // Mayor aportante como referencia visible.
+  const paidBy = paidEntries.sort((a, b) => b[1] - a[1])[0][0];
 
   const entries = Object.entries(input.shares).filter(([, v]) => Number.isFinite(v) && v > 0);
   if (entries.length === 0) throw new Error("Elegí entre quiénes se divide.");
@@ -290,14 +305,16 @@ export async function addTripExpense(input: NewTripExpense): Promise<string> {
   const ref = await addDoc(collection(db, "trip_expenses"), {
     tripId: input.tripId,
     familyId: input.familyId,
-    paidBy: input.paidBy,
+    paidBy,
     paidByName: input.paidByName || "Miembro",
     paidByPhoto: input.paidByPhoto || "",
+    paid: Object.fromEntries(paidEntries.map(([k, v]) => [k, Math.round(v * 100) / 100])),
     amount: Math.round(input.amount * 100) / 100,
     description: (input.description ?? "").trim().slice(0, 140),
     category: (input.category ?? "").trim().slice(0, 30),
     date: toTimestamp(input.date),
     shares: Object.fromEntries(entries.map(([k, v]) => [k, Math.round(v * 100) / 100])),
+    coveredBy: input.coveredBy ?? {},
     updatedAt: serverTimestamp(),
   });
   return ref.id;
@@ -318,27 +335,47 @@ function parseExpense(id: string, data: Record<string, unknown>): TripExpense | 
       if (typeof v === "number" && Number.isFinite(v) && v > 0) shares[k] = v;
     }
   }
+  // Compatibilidad: gastos viejos solo tienen paidBy (puso todo él).
+  const paid: Record<string, number> = {};
+  if (data.paid && typeof data.paid === "object") {
+    for (const [k, v] of Object.entries(data.paid as Record<string, unknown>)) {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) paid[k] = v;
+    }
+  }
+  const paidBy = typeof data.paidBy === "string" ? data.paidBy : "";
+  if (Object.keys(paid).length === 0 && paidBy) paid[paidBy] = amount;
+  const coveredBy: Record<string, string[]> = {};
+  if (data.coveredBy && typeof data.coveredBy === "object") {
+    for (const [k, v] of Object.entries(data.coveredBy as Record<string, unknown>)) {
+      if (Array.isArray(v)) {
+        const uids = v.filter((x): x is string => typeof x === "string");
+        if (uids.length > 0) coveredBy[k] = uids;
+      }
+    }
+  }
   return {
     id,
     tripId: data.tripId,
     familyId: typeof data.familyId === "string" ? data.familyId : "",
-    paidBy: typeof data.paidBy === "string" ? data.paidBy : "",
+    paidBy,
     paidByName: typeof data.paidByName === "string" ? data.paidByName : "Miembro",
     paidByPhoto: typeof data.paidByPhoto === "string" ? data.paidByPhoto : "",
+    paid,
     amount,
     description: typeof data.description === "string" ? data.description : "",
     category: typeof data.category === "string" ? data.category : "",
     date: data.date instanceof Timestamp ? data.date : Timestamp.now(),
     shares,
+    coveredBy,
   };
 }
 
-export function useTripExpenses(tripId: string | null | undefined) {
+export function useTripExpenses(tripId: string | null | undefined, enabled = true) {
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || !enabled) return;
     const q = query(collection(db, "trip_expenses"), where("tripId", "==", tripId));
     const unsubscribe = onSnapshot(
       q,
@@ -358,9 +395,9 @@ export function useTripExpenses(tripId: string | null | undefined) {
       }
     );
     return () => unsubscribe();
-  }, [tripId]);
+  }, [tripId, enabled]);
 
-  if (!tripId) return { expenses: [], loading: false };
+  if (!tripId || !enabled) return { expenses: [], loading: false };
   return { expenses, loading };
 }
 
@@ -379,7 +416,9 @@ export function computeBalances(
     owed.set(uid, 0);
   }
   for (const e of expenses) {
-    paid.set(e.paidBy, (paid.get(e.paidBy) ?? 0) + e.amount);
+    for (const [uid, put] of Object.entries(e.paid)) {
+      paid.set(uid, (paid.get(uid) ?? 0) + put);
+    }
     for (const [uid, share] of Object.entries(e.shares)) {
       owed.set(uid, (owed.get(uid) ?? 0) + share);
     }
