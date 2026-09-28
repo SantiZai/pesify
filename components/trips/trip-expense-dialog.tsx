@@ -20,9 +20,8 @@ import {
 } from "@/components/ui/select";
 import { DateField } from "@/components/date-field";
 import { Avatar } from "@/components/avatar";
-import { addTripExpense, type TripMember } from "@/lib/firebase/trips";
+import { addTripExpense, TRIP_CURRENCIES, type TripCurrency, type TripMember } from "@/lib/firebase/trips";
 import { useAuth } from "@/lib/firebase/auth-context";
-import { useFx } from "@/lib/fx";
 import { cn } from "cn";
 
 type Props = {
@@ -48,8 +47,8 @@ function ExpenseForm({
   onClose,
 }: Omit<Props, "open" | "onOpenChange"> & { onClose: () => void }) {
   const { user: sessionUser } = useAuth();
-  const { currency } = useFx();
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<TripCurrency>("ARS");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(() => {
     const d = new Date();
@@ -212,6 +211,7 @@ function ExpenseForm({
         paidByName: topPayer?.displayName ?? sessionUser?.displayName ?? "Miembro",
         paidByPhoto: topPayer?.photoURL ?? sessionUser?.photoURL ?? "",
         amount: parsed,
+        currency,
         description,
         date: new Date(y, m - 1, d, 12),
         shares: finalShares,
@@ -229,9 +229,9 @@ function ExpenseForm({
     <form onSubmit={handleSave} className="grid gap-4">
       {error && <p className="text-sm font-medium text-red-500">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-[1fr_110px] gap-3">
         <div className="grid gap-2">
-          <Label htmlFor="te-amount">Monto{currency !== "ARS" ? " (en ARS)" : ""}</Label>
+          <Label htmlFor="te-amount">Monto</Label>
           <Input
             id="te-amount"
             type="number"
@@ -246,9 +246,25 @@ function ExpenseForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label>Fecha</Label>
-          <DateField value={date} onChange={setDate} />
+          <Label>Moneda</Label>
+          <Select value={currency} onValueChange={(v) => setCurrency((v as TripCurrency) ?? "ARS")}>
+            <SelectTrigger className="w-full text-base font-bold">
+              <span className="flex flex-1 truncate text-left">{currency}</span>
+            </SelectTrigger>
+            <SelectContent>
+              {TRIP_CURRENCIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label>Fecha</Label>
+        <DateField value={date} onChange={setDate} />
       </div>
 
       <div className="grid gap-2">
@@ -444,7 +460,7 @@ export function TripExpenseDialog({ open, onOpenChange, tripId, familyId, member
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Gasto del viaje</DialogTitle>
-          <DialogDescription>Elegí quién pagó y entre quiénes se divide.</DialogDescription>
+          <DialogDescription>Elegí el monto en su moneda, quién pagó y entre quiénes se divide.</DialogDescription>
         </DialogHeader>
         {open && (
           <ExpenseForm

@@ -98,6 +98,13 @@ service cloud.firestore {
       allow delete: if isFamilyMember(resource.data.familyId);
     }
 
+    // Marca de meses ya inicializados para el arrastre mensual de cuentas.
+    match /bill_months/{monthId} {
+      allow read: if isFamilyMember(resource.data.familyId);
+      allow create, update: if isFamilyMember(request.resource.data.familyId);
+      allow delete: if isFamilyMember(resource.data.familyId);
+    }
+
     match /savings_goals/{goalId} {
       // El doc puede no existir (sin meta): resource null se permite.
       allow get: if resource == null || isFamilyMember(resource.data.familyId);

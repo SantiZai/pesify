@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { auth } from "@/lib/firebase/config";
 import { signOut } from "firebase/auth";
-import { addBill, deleteBill, setBillPaid, updateBill, useBills, type PlannedBill } from "@/lib/firebase/bills";
+import { addBill, deleteBill, deleteBillAndFollowing, ensureMonthBills, setBillPaid, updateBill, useBills, type PlannedBill } from "@/lib/firebase/bills";
 import { monthKeyOf, monthLabel, shiftMonth } from "@/lib/firebase/budgets";
 import { mergedCategories, useCategories } from "@/lib/firebase/categories";
 import { useFx } from "@/lib/fx";
@@ -30,31 +30,40 @@ function BillRow({
   bill,
   onToggle,
   onDelete,
+  onDeleteFollowing,
   onRename,
   busy,
 }: {
   bill: PlannedBill;
   onToggle: () => void;
   onDelete: () => void;
-  onRename: (patch: { description: string; amount: number }) => Promise<void>;
+  onDeleteFollowing: (() => void) | null;
+  onRename: (patch: { description: string; amount: number; dueDay: number | null }) => Promise<void>;
   busy: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState(bill.description);
   const [amount, setAmount] = useState(String(bill.amount));
+  const [dueDay, setDueDay] = useState(bill.dueDay ? String(bill.dueDay) : "");
   const [confirming, setConfirming] = useState(false);
+  const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState("");
   const { fmt } = useFx();
 
   const save = async () => {
     setError("");
     const v = Number(String(amount).replace(",", "."));
+    const day = dueDay.trim() === "" ? null : Number(dueDay);
     if (!desc.trim() || !Number.isFinite(v) || v <= 0) {
       setError("Completá detalle y monto válido.");
       return;
     }
+    if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) {
+      setError("El vencimiento debe estar entre 1 y 31.");
+      return;
+    }
     try {
-      await onRename({ description: desc.trim(), amount: v });
+      await onRename({ description: desc.trim(), amount: v, dueDay: day });
       setEditing(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
@@ -68,6 +77,16 @@ function BillRow({
     }
     await onDelete();
     setConfirming(false);
+  };
+
+  const removeFollowing = async () => {
+    if (!onDeleteFollowing) return;
+    if (!confirmingAll) {
+      setConfirmingAll(true);
+      return;
+    }
+    await onDeleteFollowing();
+    setConfirmingAll(false);
   };
 
   return (
@@ -89,8 +108,8 @@ function BillRow({
         </button>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <span className="flex items-center gap-1">
-              <Input value={desc} maxLength={140} onChange={(e) => setDesc(e.target.value)} className="h-8" />
+            <span className="flex flex-wrap items-center gap-1">
+              <Input value={desc} maxLength={140} onChange={(e) => setDesc(e.target.value)} className="h-8 min-w-28 flex-1" />
               <Input
                 type="number"
                 inputMode="decimal"
@@ -99,6 +118,18 @@ function BillRow({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="h-8 w-24"
+                title="Monto de la boleta de este mes"
+              />
+              <Input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="31"
+                placeholder="Vto"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                className="h-8 w-16"
+                title="Día de vencimiento de este mes"
               />
               <Button size="icon-sm" onClick={save} title="Guardar">
                 <Check className="size-4" />
@@ -111,6 +142,11 @@ function BillRow({
             <>
               <p className={cn("truncate text-sm font-medium", bill.paid && "line-through")}>
                 {bill.description || bill.category}
+                {bill.autoRepeat && (
+                  <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+                    Mensual
+                  </span>
+                )}
               </p>
               <p className="truncate text-xs text-muted-foreground">
                 {bill.category}
@@ -124,7 +160,7 @@ function BillRow({
         <p className="shrink-0 text-sm font-bold tabular-nums">{fmt(bill.amount)}</p>
         {!editing && (
           <>
-            <Button variant="ghost" size="icon-sm" onClick={() => { setDesc(bill.description); setAmount(String(bill.amount)); setEditing(true); }} title="Editar">
+            <Button variant="ghost" size="icon-sm" onClick={() => { setDesc(bill.description); setAmount(String(bill.amount)); setDueDay(bill.dueDay ? String(bill.dueDay) : ""); setEditing(true); }} title="Editar monto o vencimiento de este mes">
               <Pencil className="size-4" />
             </Button>
             <Button
@@ -132,10 +168,22 @@ function BillRow({
               size="icon-sm"
               onClick={remove}
               onBlur={() => setConfirming(false)}
-              title={confirming ? "Tocá de nuevo para confirmar" : "Borrar"}
+              title={confirming ? "Tocá de nuevo: borra solo este mes" : "Borrar solo este mes"}
             >
               <Trash className="size-4" />
             </Button>
+            {onDeleteFollowing && (
+              <Button
+                variant={confirmingAll ? "destructive" : "ghost"}
+                size="icon-sm"
+                onClick={removeFollowing}
+                onBlur={() => setConfirmingAll(false)}
+                title={confirmingAll ? "Tocá de nuevo: borra este mes y los siguientes" : "Borrar este mes y los siguientes"}
+              >
+                <Trash className="size-4" weight={confirmingAll ? "fill" : "regular"} />
+                <span className="text-[10px] font-bold">+</span>
+              </Button>
+            )}
           </>
         )}
       </div>
@@ -154,6 +202,7 @@ export default function BillsPage() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDay, setDueDay] = useState("");
+  const [repeat, setRepeat] = useState(true);
   const [formError, setFormError] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -162,6 +211,19 @@ export default function BillsPage() {
   const { bills, loading } = useBills(familyId, monthKey);
   const { categories: customs } = useCategories(familyId);
   const expenseCats = useMemo(() => ["Impuestos", ...mergedCategories(customs, "expense").filter((c) => c !== "Impuestos")], [customs]);
+
+  // Arrastre mensual: si el mes está vacío, se rellena con los impuestos del
+  // mes anterior (una sola vez por mes, no regenera lo borrado a propósito).
+  const ensuredKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!familyId) return;
+    const key = `${familyId}_${monthKey}`;
+    if (ensuredKey.current === key) return;
+    ensuredKey.current = key;
+    ensureMonthBills(familyId, monthKey).catch((e) =>
+      console.error("Error arrastrando cuentas del mes anterior:", e)
+    );
+  }, [familyId, monthKey]);
 
   const totals = useMemo(() => {
     let pending = 0;
@@ -202,6 +264,7 @@ export default function BillsPage() {
         amount: parsed,
         dueDay: day,
         createdBy: user.uid,
+        repeat,
       });
       setDescription("");
       setAmount("");
@@ -227,6 +290,16 @@ export default function BillsPage() {
     }
   };
 
+  const handleDeleteFollowing = async (bill: PlannedBill) => {
+    if (busyId) return;
+    setBusyId(bill.id);
+    try {
+      await deleteBillAndFollowing(bill);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
       <DesktopNav
@@ -243,7 +316,7 @@ export default function BillsPage() {
             <ArrowLeft className="size-3" /> Inicio
           </Link>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Cuentas del mes</h1>
-          <p className="text-muted-foreground">Impuestos y fijos por pagar: marcá al pagar</p>
+          <p className="text-muted-foreground">Impuestos mensuales: se repiten solos, editá cada boleta al llegar</p>
         </header>
 
         {/* Navegador de mes */}
@@ -295,7 +368,8 @@ export default function BillsPage() {
           <CardHeader>
             <CardTitle>Cuentas</CardTitle>
             <CardDescription>
-              Tildar como paga crea el egreso y actualiza el saldo; destildar lo borra.
+              Tildar como paga crea el egreso y lo descuenta del saldo; destildar lo borra.
+              El lápiz edita monto y vencimiento solo de este mes.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -314,6 +388,7 @@ export default function BillsPage() {
                     busy={busyId === b.id}
                     onToggle={() => handleToggle(b)}
                     onDelete={() => deleteBill(b.id)}
+                    onDeleteFollowing={b.autoRepeat && b.templateId ? () => handleDeleteFollowing(b) : null}
                     onRename={(patch) => updateBill(b.id, patch)}
                   />
                 ))}
@@ -326,7 +401,7 @@ export default function BillsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Agregar cuenta</CardTitle>
-            <CardDescription>Se registra pendiente aunque todavía no la pagues.</CardDescription>
+            <CardDescription>Se registra pendiente aunque todavía no la pagues. Con “repetir” queda agregada a los meses siguientes.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleAdd} className="grid gap-3">
@@ -390,6 +465,21 @@ export default function BillsPage() {
               <Button type="submit" disabled={adding}>
                 {adding ? "Agregando..." : "Agregar cuenta"}
               </Button>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={repeat}
+                  onClick={() => setRepeat((v) => !v)}
+                  className={cn(
+                    "flex size-5 items-center justify-center rounded-md border text-xs font-bold",
+                    repeat ? "border-green-600 bg-green-600 text-white" : "text-transparent"
+                  )}
+                >
+                  ✓
+                </button>
+                Repetir cada mes (queda agregada a los siguientes meses)
+              </label>
             </form>
           </CardContent>
         </Card>

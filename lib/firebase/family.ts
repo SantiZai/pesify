@@ -60,11 +60,13 @@ export async function getFamily(familyId: string): Promise<Family | null> {
   };
 }
 
-/** Cambia la moneda de display (los montos se guardan en ARS). */
+/** Cambia la moneda de display (los montos se guardan en ARS). Solo las 4 de la app. */
 export async function setFamilyCurrency(familyId: string, currency: string, rateToArs: number): Promise<void> {
   if (!familyId) throw new Error("Falta la familia activa.");
   const code = currency.trim().toUpperCase().slice(0, 3);
-  if (!code) throw new Error("Elegí una moneda.");
+  if (!(CURRENCIES as readonly { code: string }[]).some((c) => c.code === code)) {
+    throw new Error("Moneda no válida (ARS, USD, BRL o EUR).");
+  }
   const rate = code === "ARS" ? 1 : rateToArs;
   if (!Number.isFinite(rate) || rate <= 0) throw new Error("La conversión debe ser mayor a 0.");
   await updateDoc(doc(db, "families", familyId), { currency: code, rateToArs: rate });

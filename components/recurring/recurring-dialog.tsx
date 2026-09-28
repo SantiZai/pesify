@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import {
   addRecurring,
+  materializeDueRecurring,
   updateRecurring,
   type RecurringRule,
 } from "@/lib/firebase/recurring";
@@ -113,6 +114,12 @@ function RecurringForm({
           ...payload,
         });
       }
+      // Si el día de cobro/pago ya pasó (p. ej. creás hoy un ingreso del día
+      // 20), se genera el movimiento en el acto para que sume al saldo del
+      // mes en vez de esperar a la próxima apertura de la app.
+      materializeDueRecurring(familyId, { uid: uid ?? undefined }).catch((e) =>
+        console.error("Error materializando recurrencias:", e)
+      );
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "No se pudo guardar. Intentá de nuevo.");
@@ -201,6 +208,7 @@ function RecurringForm({
         <DateField value={startDate} onChange={setStartDate} />
         <p className="text-xs text-muted-foreground">
           Cada mes se genera ese día (si el mes no lo tiene, usa el último día).
+          Si esa fecha ya pasó, el movimiento se crea ahora y suma al saldo.
         </p>
       </div>
 

@@ -13,6 +13,20 @@ export function formatMoney(amount: number): string {
   return currencyFmt.format(amount);
 }
 
+/** "R$ 150,00" / "US$ 20,00": monto en la moneda indicada, sin convertir. */
+export function formatMoneyIn(amount: number, currency: string): string {
+  const code = currency.toUpperCase();
+  try {
+    return new Intl.NumberFormat(LOCALE, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${code}`;
+  }
+}
+
 const compactFmt = new Intl.NumberFormat(LOCALE, {
   notation: "compact",
   maximumFractionDigits: 1,

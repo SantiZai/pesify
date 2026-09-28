@@ -117,12 +117,14 @@ export default function RecurringPage() {
   // Por si se entra directo a esta página: aplica las vencidas (idempotente).
   const materializedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!familyId || materializedFor.current === familyId) return;
-    materializedFor.current = familyId;
-    materializeDueRecurring(familyId).catch((e) =>
+    if (!familyId) return;
+    const key = `${familyId}_${user?.uid ?? ""}`;
+    if (materializedFor.current === key) return;
+    materializedFor.current = key;
+    materializeDueRecurring(familyId, { uid: user?.uid }).catch((e) =>
       console.error("Error materializando recurrencias:", e)
     );
-  }, [familyId]);
+  }, [familyId, user?.uid]);
 
   const handleLogout = async () => {
     if (loggingOut) return;

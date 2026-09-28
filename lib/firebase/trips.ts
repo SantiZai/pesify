@@ -21,6 +21,18 @@ import { db } from "./config";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
+/** Monedas de la app: solo pesos, dólares, reales y euros. Lista cerrada para
+ *  evitar "USD" vs "usd" y que un mismo saldo se parta en dos. Sin
+ *  conversión: cada moneda salda por su lado. */
+export const TRIP_CURRENCIES = ["ARS", "USD", "BRL", "EUR"] as const;
+
+export type TripCurrency = (typeof TRIP_CURRENCIES)[number];
+
+export function normalizeTripCurrency(value: unknown): TripCurrency {
+  const code = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return (TRIP_CURRENCIES as readonly string[]).includes(code) ? (code as TripCurrency) : "ARS";
+}
+
 export type Trip = {
   id: string;
   familyId: string;
@@ -54,6 +66,8 @@ export type TripExpense = {
   /** Cuánto puso cada UID. */
   paid: Record<string, number>;
   amount: number;
+  /** Moneda del gasto (gastos viejos = ARS). Cada moneda salda por separado. */
+  currency: TripCurrency;
   description: string;
   category: string;
   date: Timestamp;
@@ -72,6 +86,8 @@ export type NewTripExpense = {
   amount: number;
   description?: string;
   category?: string;
+  /** Por defecto ARS. */
+  currency?: string;
   date?: Timestamp | Date;
   shares: Record<string, number>;
   coveredBy?: Record<string, string[]>;
@@ -310,6 +326,7 @@ export async function addTripExpense(input: NewTripExpense): Promise<string> {
     paidByPhoto: input.paidByPhoto || "",
     paid: Object.fromEntries(paidEntries.map(([k, v]) => [k, Math.round(v * 100) / 100])),
     amount: Math.round(input.amount * 100) / 100,
+    currency: normalizeTripCurrency(input.currency),
     description: (input.description ?? "").trim().slice(0, 140),
     category: (input.category ?? "").trim().slice(0, 30),
     date: toTimestamp(input.date),
@@ -362,6 +379,7 @@ function parseExpense(id: string, data: Record<string, unknown>): TripExpense | 
     paidByPhoto: typeof data.paidByPhoto === "string" ? data.paidByPhoto : "",
     paid,
     amount,
+    currency: normalizeTripCurrency(data.currency),
     description: typeof data.description === "string" ? data.description : "",
     category: typeof data.category === "string" ? data.category : "",
     date: data.date instanceof Timestamp ? data.date : Timestamp.now(),
@@ -401,37 +419,64 @@ export function useTripExpenses(tripId: string | null | undefined, enabled = tru
   return { expenses, loading };
 }
 
-// ── Balances: quién pagó, quién debe y quién le debe a quién ─────────────────
+// ── Balances por moneda: quién pagó, quién debe y quién le debe a quién ──────
+// Sin conversiones: cada moneda se acumula y salda por separado (uno puede
+// deber 20 USD y 15 BRL a otro a la vez).
 
-export type Settlement = { from: string; to: string; amount: number };
+export type CurrencyBalance = {
+  paid: Map<string, number>;
+  owed: Map<string, number>;
+  net: Map<string, number>;
+};
 
-export function computeBalances(
+/** Un Map por moneda (orden de aparición), solo con monedas que tienen gastos. */
+export function computeBalancesByCurrency(
   expenses: TripExpense[],
   participantUids: string[]
-): { paid: Map<string, number>; owed: Map<string, number>; net: Map<string, number> } {
-  const paid = new Map<string, number>();
-  const owed = new Map<string, number>();
-  for (const uid of participantUids) {
-    paid.set(uid, 0);
-    owed.set(uid, 0);
-  }
+): Map<TripCurrency, CurrencyBalance> {
+  const byCurrency = new Map<TripCurrency, CurrencyBalance>();
+  const bucket = (currency: TripCurrency): CurrencyBalance => {
+    let b = byCurrency.get(currency);
+    if (!b) {
+      b = { paid: new Map(), owed: new Map(), net: new Map() };
+      for (const uid of participantUids) {
+        b.paid.set(uid, 0);
+        b.owed.set(uid, 0);
+      }
+      byCurrency.set(currency, b);
+    }
+    return b;
+  };
   for (const e of expenses) {
+    const b = bucket(e.currency);
     for (const [uid, put] of Object.entries(e.paid)) {
-      paid.set(uid, (paid.get(uid) ?? 0) + put);
+      b.paid.set(uid, (b.paid.get(uid) ?? 0) + put);
     }
     for (const [uid, share] of Object.entries(e.shares)) {
-      owed.set(uid, (owed.get(uid) ?? 0) + share);
+      b.owed.set(uid, (b.owed.get(uid) ?? 0) + share);
     }
   }
-  const net = new Map<string, number>();
-  for (const uid of new Set([...paid.keys(), ...owed.keys()])) {
-    net.set(uid, Math.round(((paid.get(uid) ?? 0) - (owed.get(uid) ?? 0)) * 100) / 100);
+  for (const b of byCurrency.values()) {
+    for (const uid of new Set([...b.paid.keys(), ...b.owed.keys()])) {
+      b.net.set(uid, Math.round(((b.paid.get(uid) ?? 0) - (b.owed.get(uid) ?? 0)) * 100) / 100);
+    }
   }
-  return { paid, owed, net };
+  return byCurrency;
 }
 
-/** Deudas simplificadas (avaricioso): pares deudor → acreedor. */
-export function settleDebts(net: Map<string, number>): Settlement[] {
+/** Total gastado por moneda (orden de aparición), para el encabezado. */
+export function totalsByCurrency(expenses: TripExpense[]): Map<TripCurrency, number> {
+  const totals = new Map<TripCurrency, number>();
+  for (const e of expenses) {
+    totals.set(e.currency, Math.round(((totals.get(e.currency) ?? 0) + e.amount) * 100) / 100);
+  }
+  return totals;
+}
+
+export type Settlement = { from: string; to: string; amount: number; currency: TripCurrency };
+
+/** Deudas simplificadas (avaricioso) dentro de UNA moneda: pares deudor → acreedor. */
+export function settleDebts(net: Map<string, number>, currency: TripCurrency): Settlement[] {
   const creditors = [...net.entries()]
     .filter(([, v]) => v > 0.005)
     .map(([uid, amount]) => ({ uid, amount }))
@@ -446,11 +491,23 @@ export function settleDebts(net: Map<string, number>): Settlement[] {
   let j = 0;
   while (i < debtors.length && j < creditors.length) {
     const pay = Math.min(debtors[i].amount, creditors[j].amount);
-    out.push({ from: debtors[i].uid, to: creditors[j].uid, amount: Math.round(pay * 100) / 100 });
+    out.push({ from: debtors[i].uid, to: creditors[j].uid, amount: Math.round(pay * 100) / 100, currency });
     debtors[i].amount -= pay;
     creditors[j].amount -= pay;
     if (debtors[i].amount <= 0.005) i++;
     if (creditors[j].amount <= 0.005) j++;
+  }
+  return out;
+}
+
+/** Saldos de todas las monedas: moneda → deudas mínimas en esa moneda. */
+export function settleAllByCurrency(
+  byCurrency: Map<TripCurrency, CurrencyBalance>
+): Map<TripCurrency, Settlement[]> {
+  const out = new Map<TripCurrency, Settlement[]>();
+  for (const [currency, b] of byCurrency) {
+    const settlements = settleDebts(b.net, currency);
+    if (settlements.length > 0) out.set(currency, settlements);
   }
   return out;
 }

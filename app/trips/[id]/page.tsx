@@ -7,17 +7,17 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { auth } from "@/lib/firebase/config";
 import { signOut } from "firebase/auth";
 import {
-  computeBalances,
+  computeBalancesByCurrency,
   deleteTripCascade,
   deleteTripExpense,
   renameTrip,
-  settleDebts,
+  settleAllByCurrency,
+  totalsByCurrency,
   useTrip,
   useTripExpenses,
   type TripMember,
 } from "@/lib/firebase/trips";
-import { formatShortDate } from "@/lib/format";
-import { useFx } from "@/lib/fx";
+import { formatMoneyIn, formatShortDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,16 +60,20 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
 
   const { trip, members, loading, error } = useTrip(id, !leaving);
   const { expenses, loading: loadingExpenses } = useTripExpenses(id, !leaving);
-  const { fmt } = useFx();
 
   const familyId = profile?.currentFamilyId ?? null;
 
+  // Sin conversiones: cada moneda acumula y salda por separado.
   const balances = useMemo(
-    () => computeBalances(expenses, members.map((m) => m.uid)),
+    () => computeBalancesByCurrency(expenses, members.map((m) => m.uid)),
     [expenses, members]
   );
-  const settlements = useMemo(() => settleDebts(balances.net), [balances]);
-  const total = useMemo(() => expenses.reduce((acc, e) => acc + e.amount, 0), [expenses]);
+  const settlements = useMemo(() => settleAllByCurrency(balances), [balances]);
+  const totals = useMemo(() => totalsByCurrency(expenses), [expenses]);
+  const totalLine = useMemo(
+    () => [...totals].map(([c, t]) => formatMoneyIn(t, c)).join(" + "),
+    [totals]
+  );
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -168,7 +172,8 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
           )}
           {trip && (
             <p className="text-muted-foreground">
-              {fmt(total)} en {expenses.length} gasto{expenses.length === 1 ? "" : "s"} ·{" "}
+              {expenses.length === 0 ? "Sin gastos" : totalLine} ·{" "}
+              {expenses.length} gasto{expenses.length === 1 ? "" : "s"} ·{" "}
               {members.length} participante{members.length === 1 ? "" : "s"}
             </p>
           )}
@@ -256,7 +261,7 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                                 </p>
                               )}
                             </div>
-                            <p className="shrink-0 text-sm font-bold tabular-nums">{fmt(e.amount)}</p>
+                            <p className="shrink-0 text-sm font-bold tabular-nums">{formatMoneyIn(e.amount, e.currency)}</p>
                             <Button
                               variant="ghost"
                               size="icon-sm"
@@ -272,70 +277,79 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                   )}
                 </CardContent>
               </Card>
+            ) : balances.size === 0 ? (
+              <Card>
+                <CardContent>
+                  <p className="py-4 text-center text-sm text-muted-foreground">
+                    Sin gastos todavía. Agregá el primero.
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Balances</CardTitle>
-                    <CardDescription>Pagado menos parte que le toca a cada uno</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="divide-y">
-                      {members.map((m) => {
-                        const paid = balances.paid.get(m.uid) ?? 0;
-                        const owed = balances.owed.get(m.uid) ?? 0;
-                        const net = balances.net.get(m.uid) ?? 0;
-                        return (
-                          <li key={m.uid} className="flex items-center gap-3 py-2.5">
-                            <Avatar name={m.displayName} photoURL={m.photoURL} className="size-9" />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{m.displayName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Pagó {fmt(paid)} · le toca {fmt(owed)}
-                              </p>
-                            </div>
-                            <span
-                              className={cn(
-                                "shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums",
-                                net > 0.005 && "bg-green-600/10 text-green-700",
-                                net < -0.005 && "bg-red-600/10 text-red-600",
-                                Math.abs(net) <= 0.005 && "bg-muted text-muted-foreground"
-                              )}
-                            >
-                              {net > 0.005 ? `+${fmt(net)}` : fmt(net)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Quién le debe a quién</CardTitle>
-                    <CardDescription>Para saldar con la menor cantidad de pagos</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {settlements.length === 0 ? (
-                      <p className="py-2 text-sm text-muted-foreground">
-                        Todo saldado: nadie le debe a nadie.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {settlements.map((s, i) => (
-                          <li key={`${s.from}-${s.to}-${i}`} className="flex items-center gap-2 text-sm">
-                            <span className="font-medium">{memberName(members, s.from)}</span>
-                            <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="font-medium">{memberName(members, s.to)}</span>
-                            <span className="ml-auto font-bold tabular-nums">{fmt(s.amount)}</span>
-                          </li>
-                        ))}
+              [...balances].map(([currency, b]) => {
+                const cur = settlements.get(currency) ?? [];
+                return (
+                  <Card key={currency}>
+                    <CardHeader>
+                      <CardTitle>{currency}</CardTitle>
+                      <CardDescription>
+                        Pagado menos parte que le toca, en {currency} (sin convertir)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="divide-y">
+                        {members.map((m) => {
+                          const paid = b.paid.get(m.uid) ?? 0;
+                          const owed = b.owed.get(m.uid) ?? 0;
+                          const net = b.net.get(m.uid) ?? 0;
+                          return (
+                            <li key={m.uid} className="flex items-center gap-3 py-2.5">
+                              <Avatar name={m.displayName} photoURL={m.photoURL} className="size-9" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{m.displayName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Pagó {formatMoneyIn(paid, currency)} · le toca {formatMoneyIn(owed, currency)}
+                                </p>
+                              </div>
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums",
+                                  net > 0.005 && "bg-green-600/10 text-green-700",
+                                  net < -0.005 && "bg-red-600/10 text-red-600",
+                                  Math.abs(net) <= 0.005 && "bg-muted text-muted-foreground"
+                                )}
+                              >
+                                {net > 0.005 ? `+${formatMoneyIn(net, currency)}` : formatMoneyIn(net, currency)}
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
-                    )}
-                  </CardContent>
-                </Card>
-              </>
+                      {cur.length === 0 ? (
+                        <p className="py-2 text-sm text-muted-foreground">
+                          Todo saldado en {currency}: nadie le debe a nadie.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="mt-3 mb-1 text-xs font-bold tracking-wide text-muted-foreground uppercase">
+                            Quién le debe a quién
+                          </p>
+                          <ul className="space-y-2">
+                            {cur.map((s, i) => (
+                              <li key={`${s.from}-${s.to}-${i}`} className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">{memberName(members, s.from)}</span>
+                                <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                                <span className="font-medium">{memberName(members, s.to)}</span>
+                                <span className="ml-auto font-bold tabular-nums">{formatMoneyIn(s.amount, s.currency)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
 
             {/* Borrar viaje */}

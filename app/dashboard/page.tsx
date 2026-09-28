@@ -77,14 +77,16 @@ export default function Dashboard() {
   // transacciones (una vez por familia). Seguro offline: sincroniza después.
   const materializedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!familyId || materializedFor.current === familyId) return;
-    materializedFor.current = familyId;
-    materializeDueRecurring(familyId)
+    if (!familyId) return;
+    const key = `${familyId}_${user?.uid ?? ""}`;
+    if (materializedFor.current === key) return;
+    materializedFor.current = key;
+    materializeDueRecurring(familyId, { uid: user?.uid })
       .then((n) => {
         if (n > 0) setGeneratedCount(n);
       })
       .catch((e) => console.error("Error materializando recurrencias:", e));
-  }, [familyId]);
+  }, [familyId, user?.uid]);
 
   // signOut como promesa flotante dejaba el channel de Firestore a medio
   // cerrar y cualquier rechazo quedaba sin manejar. Así queda limpio;

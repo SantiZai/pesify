@@ -282,6 +282,12 @@ export function useRecurring(familyId: string | null | undefined) {
 // (hasta hoy) como transacciones normales. Es idempotente: antes de crear
 // verifica qué fechas ya existen (por `recurringId`) y borra duplicados
 // exactos. Así ni el doble-mount de StrictMode ni dos pestañas generan de más.
+//
+// Cada regla se confirma en su propio lote: si una regla vieja trae un autor
+// inválido (reglas de Firestore exigen que `createdBy` sea miembro de la
+// familia) y su escritura es denegada, falla solo esa regla y las demás igual
+// se generan. Antes un solo lote global hacía que una regla rota bloqueara
+// a todas con "Missing or insufficient permissions".
 
 const MAX_GENERATED_PER_RUN = 100;
 
@@ -292,7 +298,111 @@ function txDateKey(data: Record<string, unknown>): string | null {
   return format(d, "yyyy-MM-dd");
 }
 
-export async function materializeDueRecurring(familyId: string): Promise<number> {
+/** Genera lo vencido de UNA regla. Lotes separados por tipo de escritura:
+ *  1) movimientos (crear/borrar en `transactions`),
+ *  2) cursor `lastGenerated` en la regla.
+ *  Si (2) es denegado por las reglas publicadas, los movimientos igual quedan
+ *  generados: la idempotencia por (`recurringId` + fecha) evita duplicados en
+ *  la próxima corrida aunque el cursor no haya avanzado. Devuelve
+ *  {generadas, borradas}. Lanza con mensaje prefijado según el paso que falló
+ *  (READ_EXISTING | COMMIT_TX | COMMIT_CURSOR) para diagnosticar permisos. */
+async function materializeRule(
+  rule: RecurringRule,
+  authorUid: string,
+  today: Date,
+  budget: number
+): Promise<{ generated: number; cleaned: number }> {
+  // Qué fechas ya existen generadas para esta regla (+ limpieza de duplicados).
+  // El filtro por `familyId` es obligatorio además del de `recurringId`: las
+  // reglas autorizan la lectura según `resource.data.familyId` y Firestore
+  // deniega la query completa si los filtros no acotan ese campo (las reglas
+  // no son filtros). Requiere índice compuesto (familyId + recurringId),
+  // ver firestore.indexes.json.
+  let existing;
+  try {
+    existing = await getDocs(
+      query(
+        collection(db, "transactions"),
+        where("familyId", "==", rule.familyId),
+        where("recurringId", "==", rule.id),
+        limit(500)
+      )
+    );
+  } catch (e) {
+    throw new Error(
+      `READ_EXISTING: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+  const seen = new Set<string>();
+  const dupRefs: ReturnType<typeof doc>[] = [];
+  for (const tx of existing.docs) {
+    const key = txDateKey(tx.data() as Record<string, unknown>);
+    if (!key) continue;
+    if (seen.has(key)) {
+      const txData = tx.data();
+      // Duplicado exacto (misma regla, fecha y monto): se borra el extra.
+      if (txData.amount === rule.amount) dupRefs.push(tx.ref);
+    } else {
+      seen.add(key);
+    }
+  }
+
+  const cursor = rule.lastGenerated?.toDate() ?? null;
+  // Pendientes: desde el día siguiente al cursor (o desde el inicio).
+  const from = cursor ? addDays(startOfDay(cursor), 1) : rule.startDate.toDate();
+  const due = occurrencesBetween(rule, from, today, budget)
+    .filter((date) => !seen.has(format(date, "yyyy-MM-dd")));
+
+  if (due.length === 0 && dupRefs.length === 0) return { generated: 0, cleaned: 0 };
+
+  const txBatch = writeBatch(db);
+  for (const date of due) {
+    const txRef = doc(collection(db, "transactions"));
+    txBatch.set(txRef, {
+      familyId: rule.familyId,
+      createdBy: authorUid,
+      createdByName: rule.createdByName,
+      createdByPhoto: rule.createdByPhoto,
+      amount: rule.amount,
+      type: rule.type,
+      category: rule.category,
+      description: rule.description,
+      date: Timestamp.fromDate(date),
+      recurringId: rule.id,
+      updatedAt: serverTimestamp(),
+    });
+  }
+  for (const ref of dupRefs) txBatch.delete(ref);
+  try {
+    await txBatch.commit();
+  } catch (e) {
+    throw new Error(
+      `COMMIT_TX: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+
+  // El cursor es optimización (no reescanear): si las reglas publicadas lo
+  // deniegan, se avisa y se sigue — los movimientos ya quedaron creados.
+  if (due.length > 0) {
+    try {
+      await updateDoc(doc(db, "recurring", rule.id), {
+        lastGenerated: Timestamp.fromDate(due[due.length - 1]),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn(
+        `[pesify] movimientos de "${rule.description || rule.category}" generados, pero no se pudo guardar el cursor (revisá las reglas de /recurring en la consola):`,
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+  return { generated: due.length, cleaned: dupRefs.length };
+}
+
+export async function materializeDueRecurring(
+  familyId: string,
+  opts?: { uid?: string }
+): Promise<number> {
   if (!familyId) return 0;
   const today = endOfDay(new Date());
 
@@ -305,69 +415,46 @@ export async function materializeDueRecurring(familyId: string): Promise<number>
     )
   );
 
-  const batch = writeBatch(db);
   let generated = 0;
   let cleaned = 0;
-  const touchedRules: { ref: ReturnType<typeof doc>; last: Timestamp }[] = [];
 
   for (const d of snap.docs) {
     if (generated >= MAX_GENERATED_PER_RUN) break;
     const rule = parseRule(d.id, d.data() as Record<string, unknown>);
     if (!rule) continue;
 
-    // Qué fechas ya existen generadas para esta regla (+ limpieza de duplicados).
-    const existing = await getDocs(
-      query(collection(db, "transactions"), where("recurringId", "==", rule.id), limit(500))
+    // El autor original puede estar vacío (reglas viejas) o haber salido de
+    // la familia: en esos casos se firma con quien abrió la app (miembro).
+    const authors = [rule.createdBy, opts?.uid ?? ""].filter(
+      (a, i, arr) => a !== "" && arr.indexOf(a) === i
     );
-    const seen = new Set<string>();
-    for (const tx of existing.docs) {
-      const key = txDateKey(tx.data() as Record<string, unknown>);
-      if (!key) continue;
-      if (seen.has(key)) {
-        const txData = tx.data();
-        // Duplicado exacto (misma regla, fecha y monto): se borra el extra.
-        if (txData.amount === rule.amount) {
-          batch.delete(tx.ref);
-          cleaned++;
-        }
-      } else {
-        seen.add(key);
+    if (authors.length === 0) {
+      console.warn(`[pesify] recurrencia sin autor válido, se omite: ${rule.description || rule.category}`);
+      continue;
+    }
+
+    let ok = false;
+    for (const author of authors) {
+      try {
+        const r = await materializeRule(rule, author, today, MAX_GENERATED_PER_RUN - generated);
+        generated += r.generated;
+        cleaned += r.cleaned;
+        ok = true;
+        break;
+      } catch (e) {
+        console.warn(
+          `[pesify] no se pudo materializar "${rule.description || rule.category}" con autor ${author}:`,
+          e instanceof Error ? e.message : e
+        );
       }
     }
-
-    const cursor = rule.lastGenerated?.toDate() ?? null;
-    // Pendientes: desde el día siguiente al cursor (o desde el inicio).
-    const from = cursor ? addDays(startOfDay(cursor), 1) : rule.startDate.toDate();
-    const due = occurrencesBetween(rule, from, today, MAX_GENERATED_PER_RUN - generated)
-      .filter((date) => !seen.has(format(date, "yyyy-MM-dd")));
-
-    for (const date of due) {
-      const txRef = doc(collection(db, "transactions"));
-      batch.set(txRef, {
-        familyId: rule.familyId,
-        createdBy: rule.createdBy,
-        createdByName: rule.createdByName,
-        createdByPhoto: rule.createdByPhoto,
-        amount: rule.amount,
-        type: rule.type,
-        category: rule.category,
-        description: rule.description,
-        date: Timestamp.fromDate(date),
-        recurringId: rule.id,
-        updatedAt: serverTimestamp(),
-      });
-      generated++;
-    }
-    if (due.length > 0) {
-      touchedRules.push({ ref: doc(db, "recurring", rule.id), last: Timestamp.fromDate(due[due.length - 1]) });
+    if (!ok) {
+      console.warn(`[pesify] se omite la regla ${d.id}: sin permiso para generar sus movimientos.`);
     }
   }
 
-  if (generated === 0 && cleaned === 0) return 0;
-  for (const t of touchedRules) {
-    batch.update(t.ref, { lastGenerated: t.last, updatedAt: serverTimestamp() });
+  if (generated > 0 || cleaned > 0) {
+    console.info(`[pesify] recurrencias: ${generated} generadas, ${cleaned} duplicadas borradas`);
   }
-  await batch.commit();
-  console.info(`[pesify] recurrencias: ${generated} generadas, ${cleaned} duplicadas borradas`);
   return generated;
 }
