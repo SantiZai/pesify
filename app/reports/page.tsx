@@ -10,30 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
+import { type ChartConfig } from "@/components/ui/chart";
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog";
 import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
+import { ShadcnBars, ShadcnDonut, ShadcnTrend } from "@/components/reports/shadcn-variants";
 import { CalendarBlank, CaretDown, CaretUp, DownloadSimple, Minus } from "@phosphor-icons/react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from "recharts";
 import {
   differenceInCalendarDays,
   eachDayOfInterval,
@@ -70,6 +52,37 @@ function inRange(t: Transaction, from: Date, to: Date): boolean {
 }
 
 type Bucket = { key: string; label: string; ingresos: number; egresos: number };
+
+/** Movimiento neto acumulado dentro del rango elegido: parte de cero el
+ *  primer día (reporte real del mes/período, sin arrastre anterior).
+ *  Un punto por día (último saldo del día): las etiquetas repetidas hacen
+ *  que recharts dibuje mal la curva. */
+function buildCumulative(
+  transactions: Transaction[],
+  from: Date,
+  to: Date
+): { key: string; label: string; saldo: number }[] {
+  const fromMs = startOfDay(from).getTime();
+  const toMs = endOfDay(to).getTime();
+  const asc = [...transactions]
+    .filter((t) => {
+      const ms = t.date.toDate().getTime();
+      return ms >= fromMs && ms <= toMs;
+    })
+    .sort((a, b) => a.date.toMillis() - b.date.toMillis());
+  let acc = 0;
+  const byDay = new Map<string, { key: string; label: string; saldo: number }>();
+  for (const t of asc) {
+    acc += t.type === "income" ? t.amount : -t.amount;
+    const dayKey = format(t.date.toDate(), "yyyy-MM-dd");
+    byDay.set(dayKey, {
+      key: dayKey,
+      label: format(t.date.toDate(), "d MMM", { locale: es }),
+      saldo: Math.round(acc * 100) / 100,
+    });
+  }
+  return [...byDay.values()];
+}
 
 function bucketize(items: Transaction[], from: Date, to: Date): Bucket[] {
   const days = differenceInCalendarDays(to, from) + 1;
@@ -134,14 +147,6 @@ function bucketize(items: Transaction[], from: Date, to: Date): Bucket[] {
 
 const PIE_COLORS = ["#16a34a", "#0d9488", "#ca8a04", "#ea580c", "#7c3aed", "#db2777", "#64748b"];
 
-const barConfig = {
-  ingresos: { label: "Ingresos", color: "#16a34a" },
-  egresos: { label: "Egresos", color: "#dc2626" },
-} satisfies ChartConfig;
-
-const balanceConfig = {
-  saldo: { label: "Saldo acumulado", color: "#16a34a" },
-} satisfies ChartConfig;
 
 // ── Página ───────────────────────────────────────────────────────────────────
 
@@ -203,21 +208,10 @@ export default function ReportsPage() {
     [byCategory]
   );
 
-  const cumulative = useMemo(() => {
-    const asc = [...filtered].sort((a, b) => a.date.toMillis() - b.date.toMillis());
-    return asc.reduce<{ key: string; label: string; saldo: number }[]>((out, t) => {
-      const prev = out.length > 0 ? out[out.length - 1].saldo : 0;
-      const saldo = Math.round((prev + (t.type === "income" ? t.amount : -t.amount)) * 100) / 100;
-      return [
-        ...out,
-        {
-          key: `${t.id}`,
-          label: format(t.date.toDate(), "d MMM", { locale: es }),
-          saldo,
-        },
-      ];
-    }, []);
-  }, [filtered]);
+  const cumulative = useMemo(
+    () => buildCumulative(transactions, range.from, range.to),
+    [transactions, range]
+  );
 
   const topCategory = byCategory[0]?.name ?? "—";
   const avgDailyExpense = useMemo(() => {
@@ -469,139 +463,75 @@ export default function ReportsPage() {
               </CardContent>
             </Card>
 
-            {/* Barras: ingresos vs egresos */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Ingresos vs egresos</CardTitle>
-                <CardDescription>
-                  {totals.count} movimientos · {topCategory !== "—" ? `top: ${topCategory}` : "sin datos"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {buckets.every((b) => b.ingresos === 0 && b.egresos === 0) ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Sin movimientos en este rango.
-                  </p>
-                ) : (
-                  <ChartContainer config={barConfig} className="h-64 w-full">
-                    <BarChart data={buckets} margin={{ left: 0, right: 8 }} barCategoryGap="25%">
-                      <CartesianGrid vertical={false} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        width={56}
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v: number) => formatCompactMoney(v)}
-                      />
-                      <ChartTooltip
-                        content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />}
-                      />
-                      <ChartLegend content={<ChartLegendContent />} />
-                      <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[6, 6, 0, 0]} />
-                      <Bar dataKey="egresos" fill="var(--color-egresos)" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ChartContainer>
-                )}
-              </CardContent>
-            </Card>
+            {/* Gráficos */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Ingresos vs egresos</CardTitle>
+                    <CardDescription>
+                      {totals.count} movimientos · {topCategory !== "—" ? `top: ${topCategory}` : "sin datos"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {buckets.every((b) => b.ingresos === 0 && b.egresos === 0) ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        Sin movimientos en este rango.
+                      </p>
+                    ) : (
+                      <ShadcnBars data={buckets} />
+                    )}
+                  </CardContent>
+                </Card>
 
-            {/* Torta por categoría */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
-                  <CardTitle>Por categoría</CardTitle>
-                  <CardDescription>En qué se va (o entra) la plata</CardDescription>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant={pieType === "expense" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setPieType("expense")}
-                  >
-                    Gastos
-                  </Button>
-                  <Button
-                    variant={pieType === "income" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setPieType("income")}
-                  >
-                    Ingresos
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {byCategory.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Sin datos.</p>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2 sm:items-center">
-                    <ChartContainer config={pieConfig} className="mx-auto h-56 w-full max-w-64">
-                      <PieChart>
-                        <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                        <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={48} outerRadius={88} paddingAngle={2}>
-                          {byCategory.map((c) => (
-                            <Cell key={c.name} fill={c.fill} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ChartContainer>
-                    <ul className="space-y-2">
-                      {byCategory.map((c) => (
-                        <li key={c.name} className="flex items-center gap-2 text-sm">
-                          <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.fill }} />
-                          <span className="flex-1 truncate">{c.name}</span>
-                          <span className="font-bold">{formatMoney(c.value)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                    <div>
+                      <CardTitle>Por categoría</CardTitle>
+                      <CardDescription>En qué se va (o entra) la plata</CardDescription>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant={pieType === "expense" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPieType("expense")}
+                      >
+                        Gastos
+                      </Button>
+                      <Button
+                        variant={pieType === "income" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPieType("income")}
+                      >
+                        Ingresos
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {byCategory.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">Sin datos.</p>
+                    ) : (
+                      <ShadcnDonut
+                        data={byCategory}
+                        config={pieConfig}
+                        totalLabel={pieType === "expense" ? "Gastado" : "Ingresado"}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
 
-            {/* Tendencia del saldo */}
-            {cumulative.length > 1 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Evolución del saldo</CardTitle>
-                  <CardDescription>Acumulado en el rango elegido</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer config={balanceConfig} className="h-52 w-full">
-                    <AreaChart data={cumulative} margin={{ left: 0, right: 8 }}>
-                      {/* Verde debajo de la línea, blanco arriba (fondo) */}
-                      <defs>
-                        <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#16a34a" stopOpacity={0.35} />
-                          <stop offset="100%" stopColor="#16a34a" stopOpacity={0.6} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={32} />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        width={56}
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v: number) => formatCompactMoney(v)}
-                      />
-                      <ChartTooltip
-                        content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />}
-                      />
-                      <Area
-                        dataKey="saldo"
-                        // linear: monotone se sobrepasa en caídas bruscas
-                        // (saldo a negativo) y el relleno se corta con huecos.
-                        type="linear"
-                        fill="url(#saldoFill)"
-                        stroke="#16a34a"
-                        strokeWidth={2}
-                      />
-                    </AreaChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-            )}
+                {cumulative.length > 1 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Evolución del saldo</CardTitle>
+                      <CardDescription>Neto acumulado del período</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ShadcnTrend data={cumulative} />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {cumulative.length} puntos · cierra en {formatMoney(cumulative[cumulative.length - 1]?.saldo ?? 0)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
           </>
         )}
       </div>

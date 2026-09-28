@@ -279,10 +279,18 @@ export function useRecurring(familyId: string | null | undefined) {
 
 // ── Materialización: genera transacciones vencidas ───────────────────────────
 // Sin backend, el cliente genera al abrir la app las ocurrencias vencidas
-// (hasta hoy) como transacciones normales. El cursor `lastGenerated` evita
-// duplicados y es seguro offline (se sincroniza al reconectar).
+// (hasta hoy) como transacciones normales. Es idempotente: antes de crear
+// verifica qué fechas ya existen (por `recurringId`) y borra duplicados
+// exactos. Así ni el doble-mount de StrictMode ni dos pestañas generan de más.
 
 const MAX_GENERATED_PER_RUN = 100;
+
+function txDateKey(data: Record<string, unknown>): string | null {
+  const dt = data.date;
+  const d = dt instanceof Timestamp ? dt.toDate() : null;
+  if (!d) return null;
+  return format(d, "yyyy-MM-dd");
+}
 
 export async function materializeDueRecurring(familyId: string): Promise<number> {
   if (!familyId) return 0;
@@ -299,6 +307,7 @@ export async function materializeDueRecurring(familyId: string): Promise<number>
 
   const batch = writeBatch(db);
   let generated = 0;
+  let cleaned = 0;
   const touchedRules: { ref: ReturnType<typeof doc>; last: Timestamp }[] = [];
 
   for (const d of snap.docs) {
@@ -306,10 +315,31 @@ export async function materializeDueRecurring(familyId: string): Promise<number>
     const rule = parseRule(d.id, d.data() as Record<string, unknown>);
     if (!rule) continue;
 
+    // Qué fechas ya existen generadas para esta regla (+ limpieza de duplicados).
+    const existing = await getDocs(
+      query(collection(db, "transactions"), where("recurringId", "==", rule.id), limit(500))
+    );
+    const seen = new Set<string>();
+    for (const tx of existing.docs) {
+      const key = txDateKey(tx.data() as Record<string, unknown>);
+      if (!key) continue;
+      if (seen.has(key)) {
+        const txData = tx.data();
+        // Duplicado exacto (misma regla, fecha y monto): se borra el extra.
+        if (txData.amount === rule.amount) {
+          batch.delete(tx.ref);
+          cleaned++;
+        }
+      } else {
+        seen.add(key);
+      }
+    }
+
     const cursor = rule.lastGenerated?.toDate() ?? null;
     // Pendientes: desde el día siguiente al cursor (o desde el inicio).
     const from = cursor ? addDays(startOfDay(cursor), 1) : rule.startDate.toDate();
-    const due = occurrencesBetween(rule, from, today, MAX_GENERATED_PER_RUN - generated);
+    const due = occurrencesBetween(rule, from, today, MAX_GENERATED_PER_RUN - generated)
+      .filter((date) => !seen.has(format(date, "yyyy-MM-dd")));
 
     for (const date of due) {
       const txRef = doc(collection(db, "transactions"));
@@ -333,10 +363,11 @@ export async function materializeDueRecurring(familyId: string): Promise<number>
     }
   }
 
-  if (generated === 0) return 0;
+  if (generated === 0 && cleaned === 0) return 0;
   for (const t of touchedRules) {
     batch.update(t.ref, { lastGenerated: t.last, updatedAt: serverTimestamp() });
   }
   await batch.commit();
+  console.info(`[pesify] recurrencias: ${generated} generadas, ${cleaned} duplicadas borradas`);
   return generated;
 }

@@ -28,6 +28,8 @@ import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
 import { Avatar } from "@/components/avatar";
 import { seedDemoData } from "@/lib/firebase/seed";
+import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 import { Check, Lock, Pencil, Plus, Trash, X } from "@phosphor-icons/react";
 
 function CustomRow({
@@ -134,13 +136,26 @@ export default function SettingsPage() {
   const [seedConfirm, setSeedConfirm] = useState(false);
   const [seedProgress, setSeedProgress] = useState("");
   const [seedMsg, setSeedMsg] = useState("");
+  const [seedWarn, setSeedWarn] = useState("");
 
   const handleSeed = async () => {
+    if (!familyId || !user || seeding) return;
+    // Primera vez: avisa si ya hay datos (generar duplica todo).
     if (!seedConfirm) {
+      setSeedWarn("");
+      try {
+        const existing = await getDocs(
+          query(collection(db, "transactions"), where("familyId", "==", familyId), limit(6))
+        );
+        if (existing.size >= 5) {
+          setSeedWarn(`Ya hay movimientos en tu familia: generar duplica los datos. Tocá de nuevo solo si querés duplicar.`);
+        }
+      } catch {
+        // Sin conexión no se puede verificar: se pide confirmación igual.
+      }
       setSeedConfirm(true);
       return;
     }
-    if (!familyId || !user || seeding) return;
     setSeeding(true);
     setSeedMsg("");
     try {
@@ -309,6 +324,9 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             {seedMsg && <p className="text-sm font-medium text-green-700">{seedMsg}</p>}
+            {seedWarn && seedConfirm && !seeding && (
+              <p className="text-sm font-medium text-amber-600">{seedWarn}</p>
+            )}
             <Button
               type="button"
               variant={seedConfirm ? "destructive" : "outline"}
