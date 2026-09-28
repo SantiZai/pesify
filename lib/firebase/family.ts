@@ -2,14 +2,20 @@ import {
   addDoc,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
   runTransaction,
   serverTimestamp,
   Timestamp,
-} from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+  updateDoc,
+  where,
+  writeBatch,
+  query,
+} from "firebase/firestore";import { useEffect, useMemo, useState } from "react";
 import { db } from "./config";
 
 // ── Tipos (según REQUERIMENTS.md §5) ─────────────────────────────────────────
@@ -148,6 +154,16 @@ export async function joinFamily(rawFamilyId: string, uid: string): Promise<stri
   return newFamilyId;
 }
 
+/** Renombra la familia. Las reglas solo permiten el cambio a miembros:
+ *  cualquiera de la familia puede hacerlo. */
+export async function renameFamily(familyId: string, name: string): Promise<void> {
+  const clean = name.trim();
+  if (!familyId) throw new Error("Falta la familia activa.");
+  if (!clean) throw new Error("Poné un nombre.");
+  if (clean.length > 40) throw new Error("El nombre no puede superar 40 caracteres.");
+  await updateDoc(doc(db, "families", familyId), { name: clean });
+}
+
 /** Crea una familia nueva y mueve al usuario a ella. */
 export async function createFamily(name: string, uid: string): Promise<string> {
   const cleanName = name.trim();
@@ -166,4 +182,130 @@ export async function createFamily(name: string, uid: string): Promise<string> {
   });
 
   return familyRef.id;
+}
+
+// ── Mis familias y cambio ────────────────────────────────────────────────────
+
+export type MyFamily = { id: string; name: string; memberCount: number };
+
+/** Todas las familias donde el UID es miembro (para cambiar entre ellas). */
+export function useMyFamilies(uid: string | null | undefined) {
+  const [families, setFamilies] = useState<MyFamily[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(collection(db, "families"), where("members", "array-contains", uid));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const items: MyFamily[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          items.push({
+            id: d.id,
+            name: typeof data.name === "string" ? data.name : "Familia",
+            memberCount: Array.isArray(data.members) ? data.members.length : 0,
+          });
+        });
+        items.sort((a, b) => a.name.localeCompare(b.name));
+        setFamilies(items);
+        setLoading(false);
+      },
+      (e) => {
+        console.error("Error escuchando mis familias:", e);
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [uid]);
+
+  if (!uid) return { families: [], loading: false };
+  return { families, loading };
+}
+
+/** Cambia la familia activa (solo a una donde sos miembro). */
+export async function switchFamily(newFamilyId: string, uid: string): Promise<void> {
+  if (!newFamilyId || !uid) throw new Error("Faltan datos.");
+  const snap = await getDoc(doc(db, "families", newFamilyId));
+  const members = snap.exists() && Array.isArray(snap.data().members) ? snap.data().members : [];
+  if (!members.includes(uid)) throw new Error("No sos miembro de esa familia.");
+  await updateDoc(doc(db, "users", uid), { currentFamilyId: newFamilyId });
+}
+
+// ── Borrado en cascada ───────────────────────────────────────────────────────
+// Borra movimientos, recurrencias, categorías, presupuestos, metas y la familia.
+// Los miembros apuntados a ella pasan a otra suya o a una "Personal" nueva.
+
+async function deleteCollectionWhere(
+  collectionName: string,
+  familyId: string,
+  onProgress: (deleted: number) => void
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const snap = await getDocs(
+      query(collection(db, collectionName), where("familyId", "==", familyId), limit(400))
+    );
+    if (snap.empty) break;
+    const batch = writeBatch(db);
+    snap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    total += snap.size;
+    onProgress(total);
+    if (snap.size < 400) break;
+  }
+  return total;
+}
+
+export async function deleteFamilyCascade(
+  familyId: string,
+  uid: string,
+  onProgress?: (msg: string) => void
+): Promise<void> {
+  if (!familyId || !uid) throw new Error("Faltan datos.");
+
+  const familySnap = await getDoc(doc(db, "families", familyId));
+  if (!familySnap.exists()) throw new Error("La familia ya no existe.");
+  const members: string[] = Array.isArray(familySnap.data().members)
+    ? (familySnap.data().members as unknown[]).filter((m): m is string => typeof m === "string")
+    : [];
+  if (!members.includes(uid)) throw new Error("Solo un miembro puede eliminarla.");
+
+  onProgress?.("Borrando movimientos...");
+  await deleteCollectionWhere("transactions", familyId, (n) => onProgress?.(`Borrando movimientos... ${n}`));
+  onProgress?.("Borrando recurrencias...");
+  await deleteCollectionWhere("recurring", familyId, () => {});
+  onProgress?.("Borrando categorías...");
+  await deleteCollectionWhere("categories", familyId, () => {});
+  onProgress?.("Borrando presupuestos...");
+  await deleteCollectionWhere("budgets", familyId, () => {});
+  onProgress?.("Borrando metas...");
+  await deleteCollectionWhere("savings_goals", familyId, () => {});
+
+  // Desliga miembros: otra familia suya o una Personal nueva.
+  onProgress?.("Reubicando miembros...");
+  for (const memberUid of members) {
+    const uref = doc(db, "users", memberUid);
+    const usnap = await getDoc(uref);
+    if (!usnap.exists() || usnap.data().currentFamilyId !== familyId) continue;
+    const others = await getDocs(
+      query(collection(db, "families"), where("members", "array-contains", memberUid), limit(10))
+    );
+    const other = others.docs.find((d) => d.id !== familyId);
+    if (other) {
+      await updateDoc(uref, { currentFamilyId: other.id });
+    } else {
+      const fresh = await addDoc(collection(db, "families"), {
+        name: "Personal",
+        members: [memberUid],
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(uref, { currentFamilyId: fresh.id });
+    }
+  }
+
+  // La familia se borra última (las reglas exigen ser miembro).
+  onProgress?.("Eliminando familia...");
+  await deleteDoc(doc(db, "families", familyId));
 }

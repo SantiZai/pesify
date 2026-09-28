@@ -28,6 +28,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
 import { Avatar } from "@/components/avatar";
 import { seedDemoData } from "@/lib/firebase/seed";
+import { useTheme } from "next-themes";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { Check, Lock, Pencil, Plus, Trash, X } from "@phosphor-icons/react";
@@ -121,6 +122,7 @@ function CustomRow({
 
 export default function SettingsPage() {
   const { user, profile } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -311,6 +313,33 @@ export default function SettingsPage() {
                 )}
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        {/* Apariencia */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Apariencia</CardTitle>
+            <CardDescription>Tema de la app</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { value: "light", label: "Claro" },
+                  { value: "dark", label: "Oscuro" },
+                  { value: "system", label: "Sistema" },
+                ] as const
+              ).map((t) => (
+                <Button
+                  key={t.value}
+                  variant={theme === t.value ? "default" : "outline"}
+                  onClick={() => setTheme(t.value)}
+                >
+                  {t.label}
+                </Button>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

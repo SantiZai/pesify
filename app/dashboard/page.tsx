@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog";
 import { TransactionList } from "@/components/transactions/transaction-list";
 import { Avatar } from "@/components/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
 import { CaretRight, PiggyBank, Repeat, SignOut, TrendDown, TrendUp, Wallet, WarningCircle } from "@phosphor-icons/react";
@@ -136,9 +137,12 @@ export default function Dashboard() {
               <p className="text-muted-foreground">Bienvenido, {profile?.displayName ?? user?.email}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleLogout} disabled={loggingOut} title="Cerrar sesión">
-            <SignOut className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <Button variant="ghost" size="icon" onClick={handleLogout} disabled={loggingOut} title="Cerrar sesión">
+              <SignOut className="h-5 w-5" />
+            </Button>
+          </div>
         </header>
 
         {/* Tarjetas de resumen (§4.2) */}

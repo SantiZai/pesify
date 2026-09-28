@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 import { AuthGuard } from "@/components/auth-guard";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,14 +35,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body className={inter.className}>
         {/* Toda la app sabe si hay usuario o no */}
-        <AuthProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

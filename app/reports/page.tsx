@@ -526,9 +526,6 @@ export default function ReportsPage() {
                     </CardHeader>
                     <CardContent>
                       <ShadcnTrend data={cumulative} />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {cumulative.length} puntos · cierra en {formatMoney(cumulative[cumulative.length - 1]?.saldo ?? 0)}
-                      </p>
                     </CardContent>
                   </Card>
                 )}

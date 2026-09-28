@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   ChartBar,
@@ -9,11 +10,11 @@ import {
   Plus,
   SignOut,
   Users,
-  Wallet,
   type Icon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "cn";
 
 type Props = {
@@ -49,9 +50,7 @@ export function DesktopNav({ onAdd, displayName, photoURL, onLogout, loggingOut 
     <header className="sticky top-0 z-40 hidden border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 md:block">
       <div className="mx-auto flex h-16 w-full max-w-4xl items-center gap-6 px-4 md:px-8">
         <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Wallet className="size-5" weight="fill" />
-          </span>
+          <Image src="/logo.png" alt="Pesify" width={32} height={32} className="rounded-lg" />
           <span className="text-lg font-bold tracking-tight">Pesify</span>
         </Link>
 
@@ -91,6 +90,7 @@ export function DesktopNav({ onAdd, displayName, photoURL, onLogout, loggingOut 
             <Plus className="size-4" weight="bold" />
             Agregar
           </Button>
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="icon"

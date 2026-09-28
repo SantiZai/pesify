@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   CalendarDots,
@@ -6,7 +7,6 @@ import {
   PiggyBank,
   Repeat,
   UsersThree,
-  Wallet,
   WifiHigh,
 } from "@phosphor-icons/react/dist/ssr";
 import { buttonVariants } from "@/components/ui/button";
@@ -57,9 +57,7 @@ export default function LandingPage() {
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-5xl items-center gap-2 px-4">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Wallet className="size-5" weight="fill" />
-          </span>
+          <Image src="/logo.png" alt="Pesify" width={32} height={32} className="rounded-lg" />
           <span className="text-lg font-bold tracking-tight">Pesify</span>
           <Link href="/login" className={buttonVariants({ size: "sm", className: "ml-auto" })}>
             Entrar <ArrowRight className="size-4" />
@@ -134,9 +132,7 @@ export default function LandingPage() {
 
       <footer className="border-t">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
-          <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Wallet className="size-4" weight="fill" />
-          </span>
+          <Image src="/logo.png" alt="Pesify" width={24} height={24} className="rounded-md" />
           Pesify · Finanzas familiares offline
         </div>
       </footer>

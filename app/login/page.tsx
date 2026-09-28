@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Image from "next/image";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const EMAIL_STORAGE_KEY = "pesify-email-link";
@@ -136,9 +137,10 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center p-4 bg-background">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Acceder</CardTitle>
-          <CardDescription>Con Google o con un enlace a tu email, sin contraseña</CardDescription>
+        <CardHeader className="items-center text-center">
+          <Image src="/logo.png" alt="Pesify" width={56} height={56} className="rounded-2xl" />
+          <CardTitle className="text-2xl">Pesify</CardTitle>
+          <CardDescription>Con Google o con un enlace a tu email</CardDescription>
         </CardHeader>
         <CardContent>
           {visibleError && (
