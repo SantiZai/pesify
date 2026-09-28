@@ -23,18 +23,23 @@ export type Transaction = {
   createdBy: string;
   /** Nombre denormalizado para mostrar quién registró el gasto sin leer users. */
   createdByName: string;
+  /** Foto denormalizada (photoURL de Google) para el avatar. */
+  createdByPhoto: string;
   amount: number;
   type: TransactionType;
   category: string;
   description: string;
   date: Timestamp;
   updatedAt: Timestamp | null;
+  /** Si vino de una regla de recurrencia, su id (para insignia). */
+  recurringId?: string;
 };
 
 export type NewTransaction = {
   familyId: string;
   createdBy: string;
   createdByName: string;
+  createdByPhoto?: string;
   amount: number;
   type: TransactionType;
   category: string;
@@ -96,6 +101,7 @@ export async function addTransaction(input: NewTransaction): Promise<string> {
     familyId: input.familyId,
     createdBy: input.createdBy,
     createdByName: input.createdByName || "Miembro",
+    createdByPhoto: input.createdByPhoto || "",
     amount,
     type: input.type,
     category: input.category,
@@ -106,9 +112,13 @@ export async function addTransaction(input: NewTransaction): Promise<string> {
   return ref.id;
 }
 
-export type UpdateTransactionPatch = Partial<
-  Pick<Transaction, "amount" | "type" | "category" | "description" | "date">
->;
+export type UpdateTransactionPatch = {
+  amount?: number;
+  type?: TransactionType;
+  category?: string;
+  description?: string;
+  date?: Timestamp | Date;
+};
 
 export async function updateTransaction(
   id: string,
@@ -156,12 +166,14 @@ function parseTransaction(id: string, data: Record<string, unknown>): Transactio
     familyId: data.familyId,
     createdBy: typeof data.createdBy === "string" ? data.createdBy : "",
     createdByName: typeof data.createdByName === "string" ? data.createdByName : "Miembro",
+    createdByPhoto: typeof data.createdByPhoto === "string" ? data.createdByPhoto : "",
     amount,
     type,
     category: typeof data.category === "string" ? data.category : "Otros gastos",
     description: typeof data.description === "string" ? data.description : "",
     date,
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
+    ...(typeof data.recurringId === "string" ? { recurringId: data.recurringId } : {}),
   };
 }
 
@@ -220,6 +232,7 @@ export type Totals = {
   monthIncome: number;
   monthExpense: number;
   count: number;
+  monthCount: number;
 };
 
 /** Saldo = ingresos − egresos + métricas del mes en curso. */
@@ -231,10 +244,12 @@ export function calculateTotals(transactions: Transaction[], now = new Date()): 
   let expenseTotal = 0;
   let monthIncome = 0;
   let monthExpense = 0;
+  let monthCount = 0;
 
   for (const t of transactions) {
     const d = t.date.toDate();
     const isThisMonth = d.getMonth() === month && d.getFullYear() === year;
+    if (isThisMonth) monthCount++;
     if (t.type === "income") {
       incomeTotal += t.amount;
       if (isThisMonth) monthIncome += t.amount;
@@ -251,5 +266,6 @@ export function calculateTotals(transactions: Transaction[], now = new Date()): 
     monthIncome,
     monthExpense,
     count: transactions.length,
+    monthCount,
   };
 }

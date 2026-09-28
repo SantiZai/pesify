@@ -13,7 +13,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
 
-    const isAuthRoute = pathname === '/login' || pathname === '/'; // Rutas públicas
+    const isAuthRoute = pathname === '/login' || pathname === '/' || pathname === '/offline';
 
     if (!user && !isAuthRoute) {
       // Si no hay sesión y quiere ir a una ruta privada, al login
@@ -34,9 +34,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Si está en una ruta equivocada pero ya mandamos el replace, 
+  // Si está en una ruta equivocada pero ya mandamos el replace,
   // renderizamos nada hasta que cambie la ruta.
-  const isAuthRoute = pathname === '/login' || pathname === '/';
+  // ('/offline' es pública: la sirve el Service Worker sin conexión.)
+  const isAuthRoute = pathname === '/login' || pathname === '/' || pathname === '/offline';
   if ((!user && !isAuthRoute) || (user && isAuthRoute)) {
     return null;
   }

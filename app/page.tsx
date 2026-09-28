@@ -1,69 +1,145 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  CalendarDots,
+  ChartBar,
+  PiggyBank,
+  Repeat,
+  UsersThree,
+  Wallet,
+  WifiHigh,
+} from "@phosphor-icons/react/dist/ssr";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function Home() {
+const FEATURES = [
+  {
+    icon: WifiHigh,
+    title: "Funciona sin internet",
+    description: "Registrá gastos offline. Todo se sincroniza solo al reconectar.",
+  },
+  {
+    icon: UsersThree,
+    title: "Finanzas en familia",
+    description: "Un saldo y un historial compartidos entre todos los miembros.",
+  },
+  {
+    icon: ChartBar,
+    title: "Reportes claros",
+    description: "Gráficos por fecha y categoría para ver a dónde va la plata.",
+  },
+  {
+    icon: Repeat,
+    title: "Recurrencias automáticas",
+    description: "Sueldo, alquiler y servicios se generan solos cada mes.",
+  },
+  {
+    icon: PiggyBank,
+    title: "Presupuestos mensuales",
+    description: "Límites por categoría con alertas antes de pasarte.",
+  },
+  {
+    icon: CalendarDots,
+    title: "Instalable como app",
+    description: "Sumala a tu pantalla de inicio desde el navegador.",
+  },
+];
+
+const STEPS = [
+  { n: "1", title: "Creá tu cuenta", description: "Con email o Google, en segundos." },
+  { n: "2", title: "Registrá movimientos", description: "Ingresos y egresos con categorías." },
+  { n: "3", title: "Invitá a tu familia", description: "Compartí tu código y listo." },
+];
+
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="flex min-h-screen flex-col">
+      {/* Nav */}
+      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+        <div className="mx-auto flex h-16 w-full max-w-5xl items-center gap-2 px-4">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Wallet className="size-5" weight="fill" />
+          </span>
+          <span className="text-lg font-bold tracking-tight">Pesify</span>
+          <Link href="/login" className={buttonVariants({ size: "sm", className: "ml-auto" })}>
+            Entrar <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4">
+        {/* Hero */}
+        <section className="flex flex-col items-center py-16 text-center md:py-24">
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+            100% offline · Gratis
+          </span>
+          <h1 className="mt-4 max-w-2xl text-4xl font-bold tracking-tight md:text-6xl">
+            Las finanzas de tu familia, bajo control
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-4 max-w-xl text-lg text-muted-foreground">
+            Registrá ingresos y gastos sin conexión, compartilos con tu familia y entendé
+            a dónde va la plata con reportes simples.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <div className="mt-8 flex flex-col gap-2 sm:flex-row">
+            <Link href="/login" className={buttonVariants({ size: "lg" })}>
+              Empezar gratis <ArrowRight className="size-4" />
+            </Link>
+            <a href="#features" className={buttonVariants({ size: "lg", variant: "outline" })}>
+              Ver cómo funciona
+            </a>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section id="features" className="scroll-mt-20 pb-16">
+          <h2 className="text-center text-2xl font-bold tracking-tight">Todo lo que necesitás</h2>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((f) => (
+              <Card key={f.title}>
+                <CardHeader>
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                    <f.icon className="size-5 text-primary" weight="duotone" />
+                  </span>
+                  <CardTitle className="mt-2 text-base">{f.title}</CardTitle>
+                  <CardDescription>{f.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </section>
+
+        {/* Pasos */}
+        <section className="pb-16">
+          <h2 className="text-center text-2xl font-bold tracking-tight">Empezá en 3 pasos</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {STEPS.map((s) => (
+              <div key={s.n} className="flex gap-3 rounded-xl border p-4">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground">
+                  {s.n}
+                </span>
+                <div>
+                  <p className="font-bold">{s.title}</p>
+                  <p className="text-sm text-muted-foreground">{s.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 text-center">
+            <Link href="/login" className={buttonVariants({ size: "lg" })}>
+              Crear mi cuenta <ArrowRight className="size-4" />
+            </Link>
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t">
+        <div className="mx-auto flex w-full max-w-5xl items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
+          <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Wallet className="size-4" weight="fill" />
+          </span>
+          Pesify · Finanzas familiares offline
+        </div>
+      </footer>
     </div>
   );
 }

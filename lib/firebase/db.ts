@@ -1,16 +1,30 @@
-import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "./config";
 
 // 1. Inicializar usuario y crearle una familia por defecto si no tiene
-export async function initializeUserProfile(uid: string, email: string | null, displayName: string | null) {
+export async function initializeUserProfile(
+  uid: string,
+  email: string | null,
+  displayName: string | null,
+  photoURL: string | null = null
+) {
   if (!uid) return null;
 
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef);
 
-  // Si el usuario ya existe, devolvemos sus datos
+  // Si el usuario ya existe, actualizamos foto/nombre por si cambiaron.
   if (userSnap.exists()) {
-    return userSnap.data();
+    const data = userSnap.data();
+    const patch: Record<string, unknown> = {};
+    if ((photoURL ?? "") !== (data.photoURL ?? "")) patch.photoURL = photoURL ?? "";
+    const name = displayName || email?.split('@')[0] || "Usuario";
+    if (name !== data.displayName) patch.displayName = name;
+    if (Object.keys(patch).length > 0) {
+      await setDoc(userRef, patch, { merge: true });
+      return { ...data, ...patch };
+    }
+    return data;
   }
 
   // Si es nuevo: Le creamos una Familia personal primero
@@ -25,6 +39,7 @@ export async function initializeUserProfile(uid: string, email: string | null, d
     uid,
     email: email || "",
     displayName: displayName || email?.split('@')[0] || "Usuario",
+    photoURL: photoURL || "",
     currentFamilyId: familyRef.id,
   };
 

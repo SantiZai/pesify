@@ -1,4 +1,15 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
+
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  // Precachea la página de respaldo offline.
+  additionalPrecacheEntries: [{ url: "/offline", revision: crypto.randomUUID() }],
+  // @serwist/next no soporta Turbopack (dev de Next 16): solo activo en prod,
+  // donde el build corre con webpack (ver script "build").
+  disable: process.env.NODE_ENV === "development",
+});
 
 const nextConfig: NextConfig = {
   async headers() {
@@ -17,4 +28,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

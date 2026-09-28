@@ -6,13 +6,15 @@ import {
   onAuthStateChanged,
   User,
 } from "firebase/auth";
-import { auth } from "./config";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "./config";
 import { initializeUserProfile } from "./db";
 
 type UserProfile = {
   uid: string;
   email: string;
   displayName: string;
+  photoURL: string;
   currentFamilyId: string;
 };
 
@@ -22,6 +24,8 @@ type AuthContextType = {
   loading: boolean;
   authError: string | null;
   clearAuthError: () => void;
+  /** Relee el perfil de Firestore (ej: después de cambiar de familia). */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -30,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   authError: null,
   clearAuthError: () => {},
+  refreshProfile: async () => {},
 });
 
 export function getAuthErrorCode(error: unknown): string {
@@ -63,6 +68,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const refreshProfile = async () => {
+    const current = auth.currentUser;
+    if (!current) return;
+    const snap = await getDoc(doc(db, "users", current.uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      setProfile({ photoURL: "", ...data } as UserProfile);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     let unsubscribe: () => void = () => {};
@@ -95,9 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const userData = await initializeUserProfile(
                 currentUser.uid,
                 currentUser.email,
-                currentUser.displayName
+                currentUser.displayName,
+                currentUser.photoURL
               );
-              setProfile(userData as UserProfile);
+              setProfile({ photoURL: "", ...(userData as Record<string, unknown>) } as UserProfile);
             } catch (error) {
               // No cerramos sesión por un fallo de Firestore: el login es
               // válido aunque el perfil falle. El dashboard muestra fallback.
@@ -121,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, authError, clearAuthError: () => setAuthError(null) }}
+      value={{ user, profile, loading, authError, clearAuthError: () => setAuthError(null), refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
