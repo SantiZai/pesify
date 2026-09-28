@@ -45,8 +45,10 @@ service cloud.firestore {
 
     match /transactions/{txId} {
       allow read: if isFamilyMember(resource.data.familyId);
+      // Crear por uno mismo o por otro miembro (la app genera recurrencias
+      // con el autor de la regla aunque la abra otro integrante).
       allow create: if isFamilyMember(request.resource.data.familyId)
-        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy in familyMembers(request.resource.data.familyId)
         && request.resource.data.amount is number
         && request.resource.data.amount > 0
         && request.resource.data.type in ['income', 'expense'];
@@ -89,12 +91,54 @@ service cloud.firestore {
       allow delete: if isFamilyMember(resource.data.familyId);
     }
 
-    match /savings_goals/{goalId} {
+    // Cuentas fijas del mes (impuestos y gastos por pagar).
+    match /planned_bills/{billId} {
       allow read: if isFamilyMember(resource.data.familyId);
+      allow create, update: if isFamilyMember(request.resource.data.familyId);
+      allow delete: if isFamilyMember(resource.data.familyId);
+    }
+
+    match /savings_goals/{goalId} {
+      // El doc puede no existir (sin meta): resource null se permite.
+      allow get: if resource == null || isFamilyMember(resource.data.familyId);
+      allow list: if false;
       allow create, update: if isFamilyMember(request.resource.data.familyId)
         && request.resource.data.goal is number
         && request.resource.data.goal > 0;
       allow delete: if isFamilyMember(resource.data.familyId);
+    }
+
+    // Viajes: el código de invitación es el id. Pueden participar invitados
+    // que no son de la familia (cualquiera con el código puede unirse).
+    match /trips/{tripId} {
+      // Un código inválido (doc inexistente) debe dar "no existe", no permiso.
+      allow get: if resource == null || signedIn()
+        && (request.auth.uid in resource.data.participants
+          || request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.members);
+      allow list: if signedIn()
+        && (request.auth.uid in resource.data.participants
+          || request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.members);
+      allow create: if signedIn()
+        && request.auth.uid in request.resource.data.participants
+        && request.auth.uid in get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.members;
+      allow update: if signedIn()
+        && (request.auth.uid in resource.data.participants
+          || request.auth.uid in request.resource.data.participants
+          || request.auth.uid in get(/databases/$(database)/documents/families/$(resource.data.familyId)).data.members);
+      allow delete: if signedIn() && request.auth.uid in resource.data.participants;
+    }
+
+    match /trip_expenses/{expenseId} {
+      allow read: if signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.participants;
+      allow create: if signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.participants
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0;
+      allow update: if signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.participants;
+      allow delete: if signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.participants;
     }
   }
 }

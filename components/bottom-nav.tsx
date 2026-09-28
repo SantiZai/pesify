@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartBar, Gear, House, Plus, Users, type Icon } from "@phosphor-icons/react";
+import { Airplane, Gear, House, Plus, Users, type Icon } from "@phosphor-icons/react";
 import { cn } from "cn";
 
 type Props = {
@@ -21,7 +21,7 @@ type Item = {
 const ITEMS: Item[] = [
   { label: "Inicio", icon: House, href: "/dashboard" },
   { label: "Familia", icon: Users, href: "/family" },
-  { label: "Reportes", icon: ChartBar, href: "/reports" },
+  { label: "Viajes", icon: Airplane, href: "/trips" },
   { label: "Ajustes", icon: Gear, href: "/settings" },
 ];
 

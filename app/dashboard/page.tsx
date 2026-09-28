@@ -10,7 +10,7 @@ import {
   useTransactions,
   type Transaction,
 } from "@/lib/firebase/transactions";
-import { formatMoney, moneySizeClass } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import { signOut } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,7 @@ export default function Dashboard() {
   // Presupuestos del mes en curso para las alertas.
   const { budgets } = useBudgets(familyId, monthKeyOf());
   const { goal: savingsGoal } = useSavingsGoal(familyId, monthKeyOf());
+  const { fmt, size } = useFx();
   const budgetAlerts = useMemo(() => {
     const spending = spendingByCategory(transactions, monthKeyOf());
     return budgets
@@ -153,7 +154,7 @@ export default function Dashboard() {
               <Wallet className="h-4 w-4 opacity-90" />
             </CardHeader>
             <CardContent>
-              <div className={`font-bold tracking-tight tabular-nums ${moneySizeClass(monthBalance, "4xl")}`}>{formatMoney(monthBalance)}</div>
+              <div className={`font-bold tracking-tight tabular-nums ${size(fmt(monthBalance), "4xl")}`}>{fmt(monthBalance)}</div>
               <p className="mt-1 text-xs opacity-80">
                 {totals.monthCount} movimiento{totals.monthCount === 1 ? "" : "s"} este mes
               </p>
@@ -167,7 +168,7 @@ export default function Dashboard() {
                 <TrendUp className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
-                <div className={`font-bold text-green-600 tabular-nums ${moneySizeClass(totals.monthIncome)}`}>{formatMoney(totals.monthIncome)}</div>
+                <div className={`font-bold text-green-600 tabular-nums ${size(fmt(totals.monthIncome))}`}>{fmt(totals.monthIncome)}</div>
               </CardContent>
             </Card>
             <Card>
@@ -176,7 +177,7 @@ export default function Dashboard() {
                 <TrendDown className="h-4 w-4 text-red-600" />
               </CardHeader>
               <CardContent>
-                <div className={`font-bold text-red-600 tabular-nums ${moneySizeClass(totals.monthExpense)}`}>{formatMoney(totals.monthExpense)}</div>
+                <div className={`font-bold text-red-600 tabular-nums ${size(fmt(totals.monthExpense))}`}>{fmt(totals.monthExpense)}</div>
               </CardContent>
             </Card>
           </div>
@@ -191,12 +192,12 @@ export default function Dashboard() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground">Ahorro de este mes</p>
-                <p className={`font-bold tabular-nums ${moneySizeClass(monthBalance)}`}>
-                  {formatMoney(monthBalance)}
+                <p className={`font-bold tabular-nums ${size(fmt(monthBalance))}`}>
+                  {fmt(monthBalance)}
                 </p>
                 {savingsGoal && savingsGoal > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Meta: {formatMoney(savingsGoal)} · {Math.min(100, Math.round((monthBalance / savingsGoal) * 100))}%
+                    Meta: {fmt(savingsGoal)} · {Math.min(100, Math.round((monthBalance / savingsGoal) * 100))}%
                   </p>
                 )}
               </div>
@@ -207,7 +208,7 @@ export default function Dashboard() {
 
         {/* Alertas de presupuestos */}
         {budgets.length > 0 && (
-          <section>
+          <section className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Presupuestos</h2>
               <Link
@@ -230,7 +231,7 @@ export default function Dashboard() {
                         <WarningCircle className={cn("size-5 shrink-0", STATUS_TEXT[b.status])} weight="fill" />
                         <span className="flex-1 truncate font-medium">{b.category}</span>
                         <span className="text-muted-foreground">
-                          {formatMoney(b.spent)} / {formatMoney(b.limit)}
+                          {fmt(b.spent)} / {fmt(b.limit)}
                         </span>
                         <span className={cn("w-12 text-right font-bold", STATUS_TEXT[b.status])}>
                           {b.pct}%
@@ -250,10 +251,10 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold">Movimientos del mes</h2>
             <div className="flex items-center gap-3">
               <Link
-                href="/budgets"
+                href="/bills"
                 className="text-sm font-medium text-primary hover:underline"
               >
-                Presupuestos
+                Impuestos
               </Link>
               <Link
                 href="/recurring"

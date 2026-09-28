@@ -26,6 +26,7 @@ import {
 } from "@/lib/firebase/recurring";
 import { DateField, toDateInputValue } from "@/components/date-field";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { useFx } from "@/lib/fx";
 import { mergedCategories, useCategories } from "@/lib/firebase/categories";
 import type { TransactionType } from "@/lib/firebase/transactions";
 import { cn } from "cn";
@@ -57,6 +58,7 @@ function RecurringForm({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const { user: sessionUser } = useAuth();
+  const { currency } = useFx();
 
   const isEditing = !!editing;
   const { categories: customs } = useCategories(familyId);
@@ -143,7 +145,7 @@ function RecurringForm({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="rec-amount">Monto de cada repetición</Label>
+          <Label htmlFor="rec-amount">Monto de cada repetición{currency !== "ARS" ? " (en ARS)" : ""}</Label>
         <Input
           id="rec-amount"
           type="number"

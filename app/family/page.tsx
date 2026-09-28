@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/firebase/auth-context";
-import { createFamily, deleteFamilyCascade, joinFamily, renameFamily, switchFamily, useFamily, useMyFamilies } from "@/lib/firebase/family";
+import { createFamily, deleteFamilyCascade, joinFamily, renameFamily, setFamilyCurrency, switchFamily, useFamily, useMyFamilies, CURRENCIES } from "@/lib/firebase/family";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,10 +14,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { BottomNav } from "@/components/bottom-nav";
 import { DesktopNav } from "@/components/desktop-nav";
 import { Avatar } from "@/components/avatar";
+import { ReportDashboard } from "@/components/reports/report-dashboard";
 import { AddTransactionDialog } from "@/components/transactions/add-transaction-dialog";
 import { Check, Copy, Pencil, Users, X } from "@phosphor-icons/react";
 import { auth } from "@/lib/firebase/config";
@@ -49,6 +57,12 @@ export default function FamilyPage() {
   const [deleteMsg, setDeleteMsg] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [currency, setCurrency] = useState("ARS");
+  const [rate, setRate] = useState("1000");
+  const [currencyTouched, setCurrencyTouched] = useState(false);
+  const [fxError, setFxError] = useState("");
+  const [fxMsg, setFxMsg] = useState("");
+  const [savingFx, setSavingFx] = useState(false);
 
   const handleLogout = async () => {
     if (loggingOut) return;
@@ -115,8 +129,26 @@ export default function FamilyPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!familyId || !user || deleting) return;
+  const handleSaveFx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFxError("");
+    setFxMsg("");
+    if (!familyId || savingFx) return;
+    const effCurrency = currencyTouched ? currency : (family?.currency ?? "ARS");
+    const effRate = currencyTouched ? rate : String(family?.rateToArs ?? 1);
+    const parsed = Number(String(effRate).replace(",", "."));
+    setSavingFx(true);
+    try {
+      await setFamilyCurrency(familyId, effCurrency, parsed);
+      setFxMsg(`Moneda: ${effCurrency} (montos guardados en ARS).`);
+    } catch (err: unknown) {
+      setFxError(err instanceof Error ? err.message : "No se pudo guardar.");
+    } finally {
+      setSavingFx(false);
+    }
+  };
+
+  const handleDelete = async () => {    if (!familyId || !user || deleting) return;
     setDeleting(true);
     setDeleteError("");
     try {
@@ -162,6 +194,13 @@ export default function FamilyPage() {
           <h1 className="text-3xl font-bold tracking-tight">Familia</h1>
           <p className="text-muted-foreground">Quienes comparten tus gastos</p>
         </header>
+
+        {/* Reportes y gastos de la familia */}
+        <ReportDashboard
+          familyId={familyId}
+          uid={user?.uid ?? null}
+          displayName={profile?.displayName ?? user?.displayName ?? null}
+        />
 
         {/* Familia actual + miembros */}
         <Card>
@@ -252,8 +291,7 @@ export default function FamilyPage() {
           </CardContent>
         </Card>
 
-        {/* Mis familias: cambiar entre ellas */}
-        {myFamilies.length > 1 && (
+        {/* Mis familias: cambiar entre ellas */}        {myFamilies.length > 1 && (
           <Card>
             <CardHeader>
               <CardTitle>Mis familias</CardTitle>
@@ -315,6 +353,59 @@ export default function FamilyPage() {
               </div>
               <Button type="submit" disabled={joining}>
                 {joining ? "Uniéndote..." : "Unirse"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Moneda */}
+        <Card key={familyId ?? "none"}>
+          <CardHeader>
+            <CardTitle>Moneda</CardTitle>
+            <CardDescription>
+              Actual: {family?.currency ?? "ARS"}. Los montos se guardan en ARS y se muestran convertidos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSaveFx} className="grid gap-3">
+              {fxError && <p className="text-sm font-medium text-red-500">{fxError}</p>}
+              {fxMsg && <p className="text-sm font-medium text-green-700">{fxMsg}</p>}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="fx-currency">Moneda</Label>
+                  <Select
+                    value={currencyTouched ? currency : (family?.currency ?? "ARS")}
+                    onValueChange={(v) => { setCurrencyTouched(true); setCurrency(v ?? "ARS"); }}
+                  >
+                    <SelectTrigger id="fx-currency" className="w-full">
+                      <SelectValue placeholder="Elegí" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="fx-rate">¿Cuántos ARS vale 1 {currencyTouched ? currency : (family?.currency ?? "ARS")}?</Label>
+                  <Input
+                    id="fx-rate"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="any"
+                    placeholder="1000"
+                    value={currencyTouched ? rate : String(family?.rateToArs ?? 1)}
+                    disabled={(currencyTouched ? currency : (family?.currency ?? "ARS")) === "ARS"}
+                    onChange={(e) => { setCurrencyTouched(true); setRate(e.target.value); }}
+                  />
+                </div>
+              </div>
+              <Button type="submit" variant="outline" disabled={savingFx}>
+                {savingFx ? "Guardando..." : "Guardar moneda"}
               </Button>
             </form>
           </CardContent>

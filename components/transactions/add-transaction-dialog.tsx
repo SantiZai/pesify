@@ -29,6 +29,7 @@ import {
 import { mergedCategories, useCategories } from "@/lib/firebase/categories";
 import { DateField } from "@/components/date-field";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { useFx } from "@/lib/fx";
 import { cn } from "cn";
 
 type Props = {
@@ -77,6 +78,7 @@ function TransactionForm({
   const { categories: customs } = useCategories(familyId);
   const categories = mergedCategories(customs, type);
   const { user: sessionUser } = useAuth();
+  const { currency } = useFx();
 
   // Al cambiar de tipo, la categoría anterior puede no existir: se limpia.
   const handleTypeChange = (next: TransactionType) => {
@@ -162,7 +164,7 @@ function TransactionForm({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="tx-amount">Monto</Label>
+          <Label htmlFor="tx-amount">Monto{currency !== "ARS" ? " (en ARS)" : ""}</Label>
         <Input
           id="tx-amount"
           type="number"

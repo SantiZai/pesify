@@ -25,7 +25,17 @@ export type Family = {
   name: string;
   members: string[];
   createdAt: Timestamp | null;
+  currency: string;
+  /** Cuántos ARS vale 1 unidad de la moneda (base de guardado). */
+  rateToArs: number;
 };
+
+export const CURRENCIES = [
+  { code: "ARS", label: "Peso argentino ($)" },
+  { code: "USD", label: "Dólar (US$)" },
+  { code: "BRL", label: "Real (R$)" },
+  { code: "EUR", label: "Euro (€)" },
+] as const;
 
 export type MemberProfile = {
   uid: string;
@@ -45,7 +55,19 @@ export async function getFamily(familyId: string): Promise<Family | null> {
     name: typeof data.name === "string" ? data.name : "Familia",
     members: Array.isArray(data.members) ? data.members.filter((m): m is string => typeof m === "string") : [],
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
+    currency: typeof data.currency === "string" ? data.currency : "ARS",
+    rateToArs: typeof data.rateToArs === "number" && data.rateToArs > 0 ? data.rateToArs : 1,
   };
+}
+
+/** Cambia la moneda de display (los montos se guardan en ARS). */
+export async function setFamilyCurrency(familyId: string, currency: string, rateToArs: number): Promise<void> {
+  if (!familyId) throw new Error("Falta la familia activa.");
+  const code = currency.trim().toUpperCase().slice(0, 3);
+  if (!code) throw new Error("Elegí una moneda.");
+  const rate = code === "ARS" ? 1 : rateToArs;
+  if (!Number.isFinite(rate) || rate <= 0) throw new Error("La conversión debe ser mayor a 0.");
+  await updateDoc(doc(db, "families", familyId), { currency: code, rateToArs: rate });
 }
 
 async function getMemberProfiles(uids: string[]): Promise<MemberProfile[]> {
@@ -96,6 +118,8 @@ export function useFamily(familyId: string | null | undefined) {
             ? data.members.filter((m): m is string => typeof m === "string")
             : [],
           createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
+          currency: typeof data.currency === "string" ? data.currency : "ARS",
+          rateToArs: typeof data.rateToArs === "number" && data.rateToArs > 0 ? data.rateToArs : 1,
         });
         setError(null);
         setLoading(false);
@@ -174,6 +198,8 @@ export async function createFamily(name: string, uid: string): Promise<string> {
   const familyRef = await addDoc(collection(db, "families"), {
     name: cleanName,
     members: [uid],
+    currency: "ARS",
+    rateToArs: 1,
     createdAt: serverTimestamp(),
   });
 
@@ -299,6 +325,8 @@ export async function deleteFamilyCascade(
       const fresh = await addDoc(collection(db, "families"), {
         name: "Personal",
         members: [memberUid],
+        currency: "ARS",
+        rateToArs: 1,
         createdAt: serverTimestamp(),
       });
       await updateDoc(uref, { currentFamilyId: fresh.id });

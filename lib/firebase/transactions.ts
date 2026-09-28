@@ -57,6 +57,7 @@ export const EXPENSE_CATEGORIES = [
   "Transporte",
   "Ocio",
   "Servicios",
+  "Impuestos",
   "Salud",
   "Vivienda",
   "Educación",

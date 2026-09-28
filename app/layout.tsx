@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 import { AuthGuard } from "@/components/auth-guard";
 import { ThemeProvider } from "@/components/theme-provider";
+import { FxProvider } from "@/lib/fx";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -40,9 +41,11 @@ export default function RootLayout({
         {/* Toda la app sabe si hay usuario o no */}
         <ThemeProvider>
           <AuthProvider>
-            <AuthGuard>
-              {children}
-            </AuthGuard>
+            <FxProvider>
+              <AuthGuard>
+                {children}
+              </AuthGuard>
+            </FxProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

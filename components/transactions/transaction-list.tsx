@@ -11,6 +11,7 @@ import {
   House,
   Lightbulb,
   Pencil,
+  Receipt,
   Repeat,
   ShoppingCart,
   Storefront,
@@ -20,7 +21,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/avatar";
 import type { Transaction } from "@/lib/firebase/transactions";
-import { formatMoney, formatShortDate } from "@/lib/format";
+import { formatShortDate } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import { cn } from "cn";
 
 const CATEGORY_ICONS: Record<string, Icon> = {
@@ -28,6 +30,7 @@ const CATEGORY_ICONS: Record<string, Icon> = {
   Transporte: Bus,
   Ocio: GameController,
   Servicios: Lightbulb,
+  Impuestos: Receipt,
   Salud: Heart,
   Vivienda: House,
   Educación: Book,
@@ -60,6 +63,7 @@ function Row({
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const isIncome = t.type === "income";
+  const { fmt } = useFx();
 
   const handleDelete = async () => {
     if (!confirming) {
@@ -98,7 +102,7 @@ function Row({
       <div className="flex shrink-0 items-center gap-2">
         <div className="text-right">
           <p className={cn("text-sm font-bold", isIncome ? "text-green-600" : "text-red-600")}>
-            {isIncome ? "+" : "−"}{formatMoney(t.amount)}
+            {isIncome ? "+" : "−"}{fmt(t.amount)}
           </p>
           <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
             <Avatar name={t.createdByName} photoURL={t.createdByPhoto} className="size-4 text-[8px]" />

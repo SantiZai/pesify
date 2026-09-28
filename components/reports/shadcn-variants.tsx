@@ -8,7 +8,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { formatCompactMoney, formatMoney } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import {
   Area,
   AreaChart,
@@ -38,6 +38,7 @@ const barConfig = {
 /** Barras verticales con etiquetas arriba (estilo shadcn "Bar Chart - Label").
  *  Solo dependen de `data`: el toggle de la dona no las afecta. */
 export function ShadcnBars({ data }: { data: Bucket[] }) {
+  const { fmt, fmtC } = useFx();
   // Aire arriba (+15%) para que las barras altas y sus etiquetas no se corten.
   const max = Math.max(1, ...data.flatMap((d) => [d.ingresos, d.egresos]));
   return (
@@ -47,14 +48,14 @@ export function ShadcnBars({ data }: { data: Bucket[] }) {
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} />
         <YAxis hide domain={[0, Math.ceil(max * 1.15)]} />
         <ChartTooltip
-          content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />}
+          content={<ChartTooltipContent formatter={(value) => fmt(Number(value))} />}
         />
         <ChartLegend content={<ChartLegendContent />} />
         <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[6, 6, 0, 0]}>
           <LabelList
             dataKey="ingresos"
             position="top"
-            formatter={(v: React.ReactNode) => (Number(v) > 0 ? formatCompactMoney(Number(v)) : "")}
+            formatter={(v: React.ReactNode) => (Number(v) > 0 ? fmtC(Number(v)) : "")}
             fontSize={10}
           />
         </Bar>
@@ -62,7 +63,7 @@ export function ShadcnBars({ data }: { data: Bucket[] }) {
           <LabelList
             dataKey="egresos"
             position="top"
-            formatter={(v: React.ReactNode) => (Number(v) > 0 ? formatCompactMoney(Number(v)) : "")}
+            formatter={(v: React.ReactNode) => (Number(v) > 0 ? fmtC(Number(v)) : "")}
             fontSize={10}
           />
         </Bar>
@@ -82,6 +83,7 @@ export function ShadcnDonut({
   totalLabel: string;
 }) {
   const total = data.reduce((acc, s) => acc + s.value, 0);
+  const { fmt } = useFx();
   return (
     <div className="grid gap-4 sm:grid-cols-2 sm:items-center">
       <div className="relative mx-auto w-full max-w-64">
@@ -96,7 +98,7 @@ export function ShadcnDonut({
           </PieChart>
         </ChartContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold tabular-nums">{formatMoney(total)}</span>
+          <span className="text-2xl font-bold tabular-nums">{fmt(total)}</span>
           <span className="text-xs text-muted-foreground">{totalLabel}</span>
         </div>
       </div>
@@ -105,7 +107,7 @@ export function ShadcnDonut({
           <li key={s.name} className="flex items-center gap-2 text-sm">
             <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.fill }} />
             <span className="flex-1 truncate">{s.name}</span>
-            <span className="font-bold tabular-nums">{formatMoney(s.value)}</span>
+            <span className="font-bold tabular-nums">{fmt(s.value)}</span>
           </li>
         ))}
       </ul>
@@ -115,6 +117,7 @@ export function ShadcnDonut({
 
 /** Área con degradado y línea marcada (estilo shadcn "Area Chart - Gradient"). */
 export function ShadcnTrend({ data }: { data: Point[] }) {
+  const { fmt, fmtC } = useFx();
   return (
     <ChartContainer
       config={{ saldo: { label: "Saldo acumulado", color: "#16a34a" } } satisfies ChartConfig}
@@ -134,14 +137,15 @@ export function ShadcnTrend({ data }: { data: Point[] }) {
           axisLine={false}
           width={56}
           tick={{ fontSize: 11 }}
-          tickFormatter={(v: number) => formatCompactMoney(v)}
+          tickFormatter={(v: number) => fmtC(v)}
         />
         <ChartTooltip
-          content={<ChartTooltipContent formatter={(value) => formatMoney(Number(value))} />}
+          content={<ChartTooltipContent formatter={(value) => fmt(Number(value))} />}
         />
         <Area
           dataKey="saldo"
-          type="natural"
+          // linear evita los huecos del relleno con saldos negativos.
+          type="linear"
           fill="url(#shadcnSaldo)"
           stroke="#16a34a"
           strokeWidth={2}

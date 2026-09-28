@@ -31,6 +31,8 @@ export async function initializeUserProfile(
   const familyRef = await addDoc(collection(db, "families"), {
     name: "Personal",
     members: [uid], // Él es el único miembro por ahora
+    currency: "ARS",
+    rateToArs: 1,
     createdAt: serverTimestamp(),
   });
 

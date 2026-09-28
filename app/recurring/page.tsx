@@ -14,7 +14,8 @@ import {
   useRecurring,
   type RecurringRule,
 } from "@/lib/firebase/recurring";
-import { formatMoney, formatShortDate } from "@/lib/format";
+import { formatShortDate } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RecurringDialog } from "@/components/recurring/recurring-dialog";
@@ -33,6 +34,7 @@ function RuleRow({
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { fmt } = useFx();
   const isIncome = rule.type === "income";
   const next = rule.active ? nextOccurrence(rule) : null;
 
@@ -77,7 +79,7 @@ function RuleRow({
       </div>
 
       <p className={cn("shrink-0 text-sm font-bold", isIncome ? "text-green-600" : "text-red-600")}>
-        {isIncome ? "+" : "−"}{formatMoney(rule.amount)}
+        {isIncome ? "+" : "−"}{fmt(rule.amount)}
       </p>
 
       <div className="flex shrink-0 items-center">

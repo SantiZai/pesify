@@ -20,7 +20,7 @@ import {
   type Budget,
 } from "@/lib/firebase/budgets";
 import { EXPENSE_CATEGORIES } from "@/lib/firebase/transactions";
-import { formatMoney } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ function LimitEditor({
   saving: boolean;
 }) {
   const [value, setValue] = useState(initial ? String(initial) : "");
+  const { currency } = useFx();
   return (
     <span className="flex items-center gap-1">
       <Input
@@ -49,7 +50,7 @@ function LimitEditor({
         inputMode="decimal"
         min="0"
         step="0.01"
-        placeholder="0.00"
+        placeholder={currency !== "ARS" ? "ARS 0.00" : "0.00"}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         className="h-8 w-28"
@@ -90,6 +91,7 @@ function BudgetRow({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const { fmt } = useFx();
 
   const pct = budget && budget.limit > 0 ? Math.min(100, Math.round((spent / budget.limit) * 100)) : 0;
   const status = budget ? budgetStatus(spent, budget.limit) : "ok";
@@ -126,7 +128,7 @@ function BudgetRow({
           </p>
           {budget ? (
             <p className="text-xs text-muted-foreground">
-              {formatMoney(spent)} de {formatMoney(budget.limit)}
+              {fmt(spent)} de {fmt(budget.limit)}
               <span className={cn("ml-2 font-bold", STATUS_TEXT[status])}>{pct}%</span>
             </p>
           ) : (
@@ -167,6 +169,7 @@ export default function BudgetsPage() {
   const [monthKey, setMonthKey] = useState(monthKeyOf());
 
   const familyId = profile?.currentFamilyId ?? null;
+  const { fmt } = useFx();
   const { transactions } = useTransactions(familyId);
   const { categories: customs } = useCategories(familyId);
   const { budgets, loading } = useBudgets(familyId, monthKey);
@@ -255,7 +258,7 @@ export default function BudgetsPage() {
           <CardHeader>
             <CardTitle>Total del mes</CardTitle>
             <CardDescription>
-              {formatMoney(totals.spent)} gastados de {formatMoney(totals.limit)} presupuestados.
+                {fmt(totals.spent)} gastados de {fmt(totals.limit)} presupuestados.
               Los límites rigen desde su mes en adelante: editar este mes no cambia los anteriores.
             </CardDescription>
           </CardHeader>

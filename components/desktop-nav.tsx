@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
-  ChartBar,
+  Airplane,
   Gear,
   House,
   Plus,
@@ -35,7 +35,7 @@ type Item = {
 const ITEMS: Item[] = [
   { label: "Inicio", icon: House, href: "/dashboard" },
   { label: "Familia", icon: Users, href: "/family" },
-  { label: "Reportes", icon: ChartBar, href: "/reports" },
+  { label: "Viajes", icon: Airplane, href: "/trips" },
   { label: "Ajustes", icon: Gear, href: "/settings" },
 ];
 

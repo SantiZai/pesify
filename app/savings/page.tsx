@@ -11,7 +11,7 @@ import { pendingThisMonth } from "@/lib/firebase/recurring";
 import { setSavingsGoal, useSavingsGoal } from "@/lib/firebase/savings";
 import { monthKeyOf, monthLabel, shiftMonth } from "@/lib/firebase/budgets";
 import { spendingByCategory, useBudgets, STATUS_BAR } from "@/lib/firebase/budgets";
-import { formatMoney, moneySizeClass } from "@/lib/format";
+import { useFx } from "@/lib/fx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ export default function SavingsPage() {
   const [savingGoal, setSavingGoal] = useState(false);
 
   const familyId = profile?.currentFamilyId ?? null;
+  const { fmt, size, currency } = useFx();
   const { transactions, loading } = useTransactions(familyId);
   const { rules } = useRecurring(familyId);
   const { goal } = useSavingsGoal(familyId, monthKey);
@@ -190,11 +191,11 @@ export default function SavingsPage() {
                 <PiggyBank className="h-4 w-4 opacity-90" />
               </CardHeader>
               <CardContent>
-                <div className={`font-bold tracking-tight tabular-nums ${moneySizeClass(calc.saved, "4xl")}`}>
-                  {formatMoney(calc.saved)}
+                <div className={`font-bold tracking-tight tabular-nums ${size(fmt(calc.saved), "4xl")}`}>
+                  {fmt(calc.saved)}
                 </div>
                 <p className="mt-1 text-xs opacity-80">
-                  {formatMoney(calc.income)} ingresados − {formatMoney(calc.expense)} gastados
+                  {fmt(calc.income)} ingresados − {fmt(calc.expense)} gastados
                 </p>
                 {goal && goal > 0 && (
                   <div className="mt-3">
@@ -205,8 +206,8 @@ export default function SavingsPage() {
                       />
                     </div>
                     <p className="mt-1 text-xs opacity-90">
-                      {pct}% de tu meta ({formatMoney(goal)})
-                      {calc.saved >= goal ? " ¡Meta cumplida!" : ` · faltan ${formatMoney(goal - calc.saved)}`}
+                      {pct}% de tu meta ({fmt(goal)})
+                      {calc.saved >= goal ? " ¡Meta cumplida!" : ` · faltan ${fmt(goal - calc.saved)}`}
                     </p>
                   </div>
                 )}
@@ -236,7 +237,7 @@ export default function SavingsPage() {
                         inputMode="decimal"
                         min="0"
                         step="0.01"
-                        placeholder="0.00"
+                        placeholder={currency !== "ARS" ? "ARS 0.00" : "0.00"}
                         value={goalInput}
                         onChange={(e) => setGoalInput(e.target.value)}
                         className="h-9"
@@ -252,7 +253,7 @@ export default function SavingsPage() {
                   </div>
                 ) : (
                   <p className="text-2xl font-bold tabular-nums">
-                    {goal && goal > 0 ? formatMoney(goal) : <span className="text-base font-medium text-muted-foreground">Sin meta — definí una para motivarte</span>}
+                    {goal && goal > 0 ? fmt(goal) : <span className="text-base font-medium text-muted-foreground">Sin meta — definí una para motivarte</span>}
                   </p>
                 )}
               </CardContent>
@@ -267,19 +268,19 @@ export default function SavingsPage() {
                 <CardContent className="grid gap-1 text-sm">
                   <p className="flex justify-between">
                     <span className="text-muted-foreground">Ingresos fijos del mes</span>
-                    <span className="font-bold text-green-600 tabular-nums">+{formatMoney(calc.fixedIncome)}</span>
+                    <span className="font-bold text-green-600 tabular-nums">+{fmt(calc.fixedIncome)}</span>
                   </p>
                   <p className="flex justify-between">
                     <span className="text-muted-foreground">Pendientes de cobro</span>
-                    <span className="font-bold text-green-600 tabular-nums">+{formatMoney(calc.pendingIncome)}</span>
+                    <span className="font-bold text-green-600 tabular-nums">+{fmt(calc.pendingIncome)}</span>
                   </p>
                   <p className="flex justify-between">
                     <span className="text-muted-foreground">Egresos fijos</span>
-                    <span className="font-bold text-red-600 tabular-nums">−{formatMoney(calc.fixedExpenseTotal)}</span>
+                    <span className="font-bold text-red-600 tabular-nums">−{fmt(calc.fixedExpenseTotal)}</span>
                   </p>
                   <p className="flex justify-between border-t pt-1 font-bold">
                     <span>Ahorro comprometido</span>
-                    <span className="tabular-nums">{formatMoney(calc.committed)}</span>
+                    <span className="tabular-nums">{fmt(calc.committed)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     generados + pendientes de generarse este mes.
@@ -293,15 +294,15 @@ export default function SavingsPage() {
                 <CardContent className="grid gap-1 text-sm">
                   <p className="flex justify-between">
                     <span className="text-muted-foreground">Ingresos variables</span>
-                    <span className="font-bold text-green-600 tabular-nums">+{formatMoney(calc.varIncome)}</span>
+                    <span className="font-bold text-green-600 tabular-nums">+{fmt(calc.varIncome)}</span>
                   </p>
                   <p className="flex justify-between">
                     <span className="text-muted-foreground">Gastos variables</span>
-                    <span className="font-bold text-red-600 tabular-nums">−{formatMoney(calc.varExpense)}</span>
+                    <span className="font-bold text-red-600 tabular-nums">−{fmt(calc.varExpense)}</span>
                   </p>
                   <p className="flex justify-between border-t pt-1 font-bold">
                     <span>Ahorro variable</span>
-                    <span className="tabular-nums">{formatMoney(calc.varIncome - calc.varExpense)}</span>
+                    <span className="tabular-nums">{fmt(calc.varIncome - calc.varExpense)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Acá impacta cada gasto que cargás: el ahorro se recalcula solo.
@@ -334,21 +335,21 @@ export default function SavingsPage() {
                   <>
                     <p className="flex justify-between">
                       <span className="text-muted-foreground">Presupuestado</span>
-                      <span className="font-bold tabular-nums">{formatMoney(budgetCalc.totalLimit)}</span>
+                      <span className="font-bold tabular-nums">{fmt(budgetCalc.totalLimit)}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-muted-foreground">Gastado de presupuestos</span>
-                      <span className="font-bold tabular-nums">{formatMoney(budgetCalc.budgetedSpent)}</span>
+                      <span className="font-bold tabular-nums">{fmt(budgetCalc.budgetedSpent)}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-muted-foreground">Disponible en presupuestos</span>
                       <span className={cn("font-bold tabular-nums", budgetCalc.remaining < 0 ? "text-red-600" : "text-green-700")}>
-                        {formatMoney(budgetCalc.remaining)}
+                        {fmt(budgetCalc.remaining)}
                       </span>
                     </p>
                     <p className="flex justify-between border-t pt-1 font-bold">
                       <span>Ahorro proyectado</span>
-                      <span className="tabular-nums">{formatMoney(budgetCalc.projected)}</span>
+                      <span className="tabular-nums">{fmt(budgetCalc.projected)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Ingresos − gastos fuera de presupuesto − límites: lo que ahorrarías si respetás cada tope.
